@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>MACRIC — Game Controls & Crosshair Engine for Android Emulators</title>
+  <meta name="description" content="MACRIC: The professional game-controls engine for BlueStacks, LDPlayer, MSI & Android emulators. Custom reticles, fire button HUD, and sensitivity tuning.">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#9312ff">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    :root {
+      --bg: #000000;
+      --surface: #090614;
+      --card: #120e21;
+      --card-elevated: #1a142e;
+      --border: #2a1a45;
+      --border-glow: #6b18ba;
+      --violet: #9312ff;
+      --violet-light: #a020ff;
+      --violet-dark: #7a1cf8;
+      --magenta: #d926ff;
+      --cyan: #00e5ff;
+      --green: #45b558;
+      --red: #f03b2a;
+      --text: #f7f7f8;
+      --muted: #8b8988;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Fixed Cosmic Sky Background */
+    #sky-wrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    #stars-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #planet-canvas {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 1672px;
+      height: 717px;
+      z-index: 1;
+      transition: opacity 0.8s ease;
+    }
+    #planet-video {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1672px;
+      height: 717px;
+      object-fit: cover;
+      mix-blend-mode: screen;
+      z-index: 2;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+      display: none;
+    }
+
+    /* Stage Frame for desktop 1672x941 */
+    #stage-scaler {
+      position: relative;
+      width: 100%;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hero-stage {
+      position: relative;
+      width: 1672px;
+      height: 941px;
+      transform-origin: top center;
+    }
+
+    /* Navigation */
+    .nav-bar {
+      position: absolute;
+      top: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1204px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 20;
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 800;
+      font-size: 20px;
+      letter-spacing: 1.5px;
+    }
+    .bolt-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--violet-light), var(--violet-dark));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px rgba(147, 18, 255, 0.6);
+    }
+    .nav-menu {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(18, 14, 33, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 999px;
+    }
+    .nav-item {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 999px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .nav-item:hover, .nav-item.active {
+      color: #fff;
+      background: rgba(147, 18, 255, 0.25);
+    }
+    .pill-btn {
+      background: linear-gradient(135deg, var(--violet-light), var(--violet-dark));
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 13px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 0 18px rgba(147, 18, 255, 0.5);
+      transition: all 0.25s ease;
+    }
+    .pill-btn:hover {
+      box-shadow: 0 0 28px rgba(160, 32, 255, 0.8);
+      transform: translateY(-1px);
+    }
+    .dark-pill-btn {
+      background: rgba(26, 20, 46, 0.85);
+      color: var(--text);
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.25s ease;
+    }
+    .dark-pill-btn:hover {
+      border-color: var(--violet);
+      color: #fff;
+    }
+
+    /* Hero Typography */
+    .hero-center {
+      position: absolute;
+      top: 130px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      width: 1000px;
+      z-index: 15;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(18, 14, 33, 0.85);
+      border: 1px solid var(--border-glow);
+      padding: 5px 14px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--violet-light);
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+    }
+    .hero-title {
+      font-size: 78px;
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -1.5px;
+      margin-bottom: 16px;
+    }
+    .grad-text {
+      background: linear-gradient(135deg, #ffffff 20%, var(--magenta) 60%, var(--violet) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-lede {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 680px;
+      margin: 0 auto 24px auto;
+      line-height: 1.5;
+    }
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    /* Dashboard Panel */
+    .dashboard-panel {
+      position: absolute;
+      top: 480px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1204px;
+      background: rgba(11, 8, 20, 0.88);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 -10px 40px rgba(147, 18, 255, 0.15);
+      z-index: 20;
+    }
+    .dash-glow-strip {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--violet-light), var(--cyan), var(--violet), transparent);
+      box-shadow: 0 0 16px var(--violet);
+    }
+    .dash-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 480px;
+    }
+
+    /* Sidebar */
+    .dash-sidebar {
+      background: rgba(9, 6, 17, 0.95);
+      border-right: 1px solid var(--border);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .sidebar-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .sidebar-brand {
+      font-weight: 800;
+      font-size: 15px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .side-nav {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .side-nav-item {
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s ease;
+    }
+    .side-nav-item:hover {
+      color: #fff;
+      background: rgba(147, 18, 255, 0.15);
+    }
+    .side-nav-item.active {
+      color: #fff;
+      background: linear-gradient(90deg, var(--violet), var(--violet-dark));
+      font-weight: 600;
+      box-shadow: 0 0 12px rgba(147, 18, 255, 0.4);
+    }
+    .side-pro-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 14px;
+    }
+    .side-pro-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .side-pro-sub {
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* Dashboard Main Content Area */
+    .dash-main {
+      padding: 22px 26px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      background: var(--surface);
+    }
+    .dash-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+    }
+    .dash-user-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--violet), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 12px;
+      color: #fff;
+    }
+
+    /* Content Views */
+    .tab-content-view {
+      display: none;
+    }
+    .tab-content-view.active {
+      display: block;
+    }
+
+    /* Stats Row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .stat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .stat-badge-green {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .stat-badge-cyan {
+      color: var(--cyan);
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    /* Chart Card */
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    /* Live Landscape Viewport Mock */
+    .viewport-mock {
+      background: #07040f;
+      border: 1px solid var(--border-glow);
+      border-radius: 12px;
+      height: 240px;
+      position: relative;
+      overflow: hidden;
+      cursor: crosshair;
+    }
+    .viewport-grid {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-size: 30px 30px;
+      background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    }
+    .viewport-reticle {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      transition: transform 0.05s ease;
+    }
+
+    /* Form Controls */
+    .ctrl-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .ctrl-label-wrap {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .ctrl-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border);
+      outline: none;
+    }
+    .ctrl-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--violet-light);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--violet);
+    }
+
+    /* Download Section Below Hero */
+    .download-section-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 1204px;
+      margin: 80px auto 100px auto;
+      padding: 0 20px;
+      z-index: 25;
+    }
+    .section-title {
+      font-size: 38px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .section-sub {
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 36px;
+      font-size: 15px;
+    }
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .dl-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      transition: all 0.25s ease;
+    }
+    .dl-card:hover {
+      border-color: var(--violet);
+      transform: translateY(-2px);
+    }
+    .dl-card.highlighted {
+      border: 2px solid var(--violet);
+      background: var(--card-elevated);
+      box-shadow: 0 0 30px rgba(147, 18, 255, 0.2);
+    }
+    .dl-badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: var(--violet);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 999px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Floating Toggle Widget */
+    .floating-macric-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--violet-light), var(--violet-dark));
+      border: 2px solid #fff;
+      box-shadow: 0 0 24px rgba(147, 18, 255, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.2s ease;
+    }
+    .floating-macric-btn:hover {
+      transform: scale(1.08);
+    }
+
+    /* Modal dialog */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 20px;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal-box {
+      background: var(--card-elevated);
+      border: 1px solid var(--violet);
+      border-radius: 16px;
+      padding: 26px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 0 40px rgba(147, 18, 255, 0.3);
+    }
+
+    /* Responsive Mobile Layout */
+    @media (max-width: 900px) or (orientation: portrait) {
+      .hero-stage {
+        width: 100%;
+        height: auto;
+        transform: none !important;
+      }
+      .nav-bar {
+        position: relative;
+        top: 0;
+        left: 0;
+        transform: none;
+        width: 100%;
+        padding: 16px;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .nav-menu {
+        display: none;
+      }
+      .hero-center {
+        position: relative;
+        top: 0;
+        left: 0;
+        transform: none;
+        width: 100%;
+        padding: 20px 16px;
+      }
+      .hero-title {
+        font-size: 42px;
+      }
+      .dashboard-panel {
+        position: relative;
+        top: 0;
+        left: 0;
+        transform: none;
+        width: 100%;
+        border-radius: 0;
+      }
+      .dash-layout {
+        grid-template-columns: 1fr;
+      }
+      .dash-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .side-nav {
+        flex-direction: row;
+        overflow-x: auto;
+        padding-bottom: 6px;
+      }
+      .stats-row {
+        grid-template-columns: 1fr;
+      }
+      #planet-video {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sky & Stars Layer -->
+  <div id="sky-wrap">
+    <canvas id="stars-canvas"></canvas>
+    <canvas id="planet-canvas"></canvas>
+    <video id="planet-video" autoplay muted loop playsinline preload="auto">
+      <source src="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/e859f229-8ebd-43fb-a5a0-58006ba75327.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <div id="stage-scaler">
+    <div class="hero-stage" id="heroStage">
+
+      <!-- Navigation -->
+      <header class="nav-bar">
+        <a href="#hero" class="brand-logo">
+          <div class="bolt-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C14.92 14.1 12.98 17.5 11 21z"/>
+            </svg>
+          </div>
+          <span>MACRIC</span>
+        </a>
+
+        <nav class="nav-menu">
+          <a class="nav-item active" onclick="switchTab('dashboard')">Home</a>
+          <a class="nav-item" onclick="switchTab('games')">Games</a>
+          <a class="nav-item" onclick="switchTab('crosshair')">Crosshair</a>
+          <a class="nav-item" onclick="switchTab('fire')">Fire Button</a>
+          <a class="nav-item" onclick="switchTab('sens')">Sensitivity</a>
+          <a class="nav-item" href="#downloads">Download</a>
+        </nav>
+
+        <a href="#downloads" class="pill-btn">
+          <span>Download</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+        </a>
+      </header>
+
+      <!-- Hero Headline & Lede -->
+      <section class="hero-center" id="hero">
+        <div class="hero-badge">
+          <span>⚡</span> EMULATOR GAME CONTROLS ENGINE
+        </div>
+        <h1 class="hero-title">
+          MACRIC<br>
+          <span class="grad-text">Play Smarter, Aim Better.</span>
+        </h1>
+        <p class="hero-lede">
+          Connect your Android emulator game to tune custom crosshair reticles, floating fire buttons and pixel-perfect sensitivity with zero input lag.
+        </p>
+        <div class="hero-actions">
+          <a href="#downloads" class="pill-btn">
+            <span>Download Now</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+          </a>
+          <button class="dark-pill-btn" onclick="document.getElementById('dashPanel').scrollIntoView({behavior: 'smooth'})">
+            <span>Live Studio</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Dashboard Panel -->
+      <div class="dashboard-panel" id="dashPanel">
+        <div class="dash-glow-strip"></div>
+        <div class="dash-layout">
+
+          <!-- Sidebar -->
+          <aside class="dash-sidebar">
+            <div>
+              <div class="sidebar-head">
+                <div class="sidebar-brand">
+                  <span style="color:var(--violet-light)">⚡</span> MACRIC Engine
+                </div>
+                <span style="font-size: 11px; color: var(--muted);">v1.0.0</span>
+              </div>
+              <ul class="side-nav">
+                <li class="side-nav-item active" id="tab-btn-dashboard" onclick="switchTab('dashboard')">
+                  <span>📊</span> Overview
+                </li>
+                <li class="side-nav-item" id="tab-btn-games" onclick="switchTab('games')">
+                  <span>🎮</span> Games / Connect
+                </li>
+                <li class="side-nav-item" id="tab-btn-crosshair" onclick="switchTab('crosshair')">
+                  <span>🎯</span> Crosshair Studio
+                </li>
+                <li class="side-nav-item" id="tab-btn-fire" onclick="switchTab('fire')">
+                  <span>🔥</span> Fire Buttons
+                </li>
+                <li class="side-nav-item" id="tab-btn-sens" onclick="switchTab('sens')">
+                  <span>⚡</span> Sensitivity Tuner
+                </li>
+                <li class="side-nav-item" id="tab-btn-profiles" onclick="switchTab('profiles')">
+                  <span>💾</span> Control Profiles
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <div class="side-pro-card">
+                <div class="side-pro-title">MACRIC PRO</div>
+                <div class="side-pro-sub">Custom reticle animations & cloud cross-device sync.</div>
+                <button class="pill-btn" style="width: 100%; justify-content: center; padding: 6px 12px; font-size: 11px;">Active</button>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Main Dashboard Viewport -->
+          <main class="dash-main">
+            <!-- Topbar -->
+            <div class="dash-topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green);"></span>
+                <span id="activeGameBadge" style="font-size:12px; font-weight:600;">Free Fire MAX [Connected]</span>
+              </div>
+              <div class="dash-user-badge">
+                <div class="user-avatar">AT</div>
+                <div style="font-size: 11px;">
+                  <div style="font-weight: 700; color: #fff;">Alex T.</div>
+                  <div style="color: var(--muted); font-size: 9px;">ID: #MC-9421</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 1: Dashboard Overview -->
+            <div class="tab-content-view active" id="view-dashboard">
+              <div class="stats-row">
+                <div class="stat-card">
+                  <div class="stat-header">
+                    <span>Connected Games</span>
+                    <span class="stat-badge-green">+12.5%</span>
+                  </div>
+                  <div class="stat-val">4 Linked</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-header">
+                    <span>Saved Profiles</span>
+                    <span class="stat-badge-cyan">Synced</span>
+                  </div>
+                  <div class="stat-val">9 Presets</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-header">
+                    <span>Overlay Status</span>
+                    <span class="stat-badge-green">Active</span>
+                  </div>
+                  <div class="stat-val">HUD Ready</div>
+                </div>
+              </div>
+
+              <div class="chart-card" style="margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <div style="font-size: 13px; font-weight: 700;">Daily Tuning & Play Sessions</div>
+                  <span style="font-size: 11px; color: var(--violet-light); font-weight: 600;">January 2024</span>
+                </div>
+                <canvas id="chart-canvas" width="800" height="120" style="width:100%; height:120px;"></canvas>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px;">
+                <div class="stat-card" style="cursor: pointer;" onclick="switchTab('crosshair')">
+                  <div style="font-size: 11px; color: var(--muted);">Active Crosshair</div>
+                  <div style="font-size: 14px; font-weight: 700; color: var(--violet-light); margin-top: 4px;">Cross with Gap</div>
+                </div>
+                <div class="stat-card" style="cursor: pointer;" onclick="switchTab('fire')">
+                  <div style="font-size: 11px; color: var(--muted);">Fire Buttons</div>
+                  <div style="font-size: 14px; font-weight: 700; color: var(--cyan); margin-top: 4px;">2 Buttons [L/R]</div>
+                </div>
+                <div class="stat-card" style="cursor: pointer;" onclick="switchTab('sens')">
+                  <div style="font-size: 11px; color: var(--muted);">General Sensitivity</div>
+                  <div style="font-size: 14px; font-weight: 700; color: var(--green); margin-top: 4px;">68% Look Multiplier</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 2: Games / Connect -->
+            <div class="tab-content-view" id="view-games">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <div>
+                  <h3 style="font-size: 16px; font-weight: 700;">Select Emulator Game</h3>
+                  <p style="font-size: 11px; color: var(--muted);">Choose which game connects with MACRIC controls</p>
+                </div>
+                <button class="pill-btn" onclick="openAddGameModal()" style="font-size: 11px; padding: 6px 14px;">+ Add Custom App</button>
+              </div>
+              <div id="gamesList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+
+            <!-- Tab 3: Crosshair Studio -->
+            <div class="tab-content-view" id="view-crosshair">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Left: Viewport Preview -->
+                <div>
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+                    <span style="color: var(--muted); font-weight: 600;">LIVE LANDSCAPE RETICLE (DRAG TO MOVE)</span>
+                    <span id="chCoords" style="color: var(--cyan);">Offset: (0, 0)</span>
+                  </div>
+                  <div class="viewport-mock" id="chViewport">
+                    <div class="viewport-grid"></div>
+                    <div class="viewport-reticle" id="reticleGraphic"></div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                    <button class="dark-pill-btn" onclick="resetChCenter()" style="font-size: 11px; padding: 6px 12px;">Reset to Centre</button>
+                    <span style="font-size: 10px; color: var(--muted); align-self: center;">Hotkey: [ H ]</span>
+                  </div>
+                </div>
+
+                <!-- Right: Controls -->
+                <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px;">
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap">
+                      <span>Crosshair Style</span>
+                    </div>
+                    <select id="chStyleSelect" onchange="updateCh()" style="background:var(--surface); color:#fff; border:1px solid var(--border); padding:6px; border-radius:6px; font-size:12px;">
+                      <option value="cross_gap">Cross with Centre Gap</option>
+                      <option value="dot">Target Dot</option>
+                      <option value="plus">Solid Plus</option>
+                      <option value="circle">Precision Circle</option>
+                      <option value="circle_dot">Circle + Dot</option>
+                      <option value="t_shape">T-Shape Reticle</option>
+                      <option value="chevron">Tactical Chevron</option>
+                      <option value="diamond">Holo Diamond</option>
+                    </select>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap">
+                      <span>Size</span>
+                      <span id="chSizeVal">32px</span>
+                    </div>
+                    <input type="range" class="ctrl-slider" id="chSize" min="10" max="64" value="32" oninput="updateCh()">
+                  </div>
+
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap">
+                      <span>Thickness</span>
+                      <span id="chThickVal">3px</span>
+                    </div>
+                    <input type="range" class="ctrl-slider" id="chThick" min="1" max="8" value="3" oninput="updateCh()">
+                  </div>
+
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap">
+                      <span>Center Gap</span>
+                      <span id="chGapVal">8px</span>
+                    </div>
+                    <input type="range" class="ctrl-slider" id="chGap" min="0" max="24" value="8" oninput="updateCh()">
+                  </div>
+
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap">
+                      <span>Color Preset</span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <div onclick="setChColor('#9312ff')" style="width:24px; height:24px; border-radius:50%; background:#9312ff; cursor:pointer;"></div>
+                      <div onclick="setChColor('#45b558')" style="width:24px; height:24px; border-radius:50%; background:#45b558; cursor:pointer;"></div>
+                      <div onclick="setChColor('#f03b2a')" style="width:24px; height:24px; border-radius:50%; background:#f03b2a; cursor:pointer;"></div>
+                      <div onclick="setChColor('#00e5ff')" style="width:24px; height:24px; border-radius:50%; background:#00e5ff; cursor:pointer;"></div>
+                      <div onclick="setChColor('#f7f7f8')" style="width:24px; height:24px; border-radius:50%; background:#f7f7f8; cursor:pointer;"></div>
+                    </div>
+                  </div>
+
+                  <button class="pill-btn" onclick="saveProfileNotification()" style="width:100%; justify-content:center; margin-top:10px;">Save Crosshair</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 4: Fire Buttons -->
+            <div class="tab-content-view" id="view-fire">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 15px; font-weight: 700;">Emulator Fire Buttons Layout</h3>
+                <button class="dark-pill-btn" onclick="exportKeymapModal()" style="font-size: 11px; padding: 6px 12px;">Export Emulator Keymap</button>
+              </div>
+              <div class="viewport-mock" id="fireViewport" style="height: 220px;">
+                <div class="viewport-grid"></div>
+                <!-- Left Button -->
+                <div id="btnLeftFire" style="position:absolute; left:18%; top:65%; width:64px; height:64px; border-radius:50%; background:rgba(147,18,255,0.85); border:2px solid #fff; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:move; user-select:none;">
+                  <span style="font-size: 11px; font-weight: 800;">L-FIRE</span>
+                  <span style="font-size: 9px; color: rgba(255,255,255,0.7);">[F]</span>
+                </div>
+                <!-- Right Button -->
+                <div id="btnRightFire" style="position:absolute; left:80%; top:65%; width:76px; height:76px; border-radius:50%; background:rgba(160,32,255,0.85); border:2px solid #fff; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:move; user-select:none;">
+                  <span style="font-size: 13px; font-weight: 900;">FIRE</span>
+                  <span style="font-size: 10px; color: rgba(255,255,255,0.8);">[L-Click]</span>
+                </div>
+              </div>
+              <p style="font-size: 10px; color: var(--muted); margin-top: 8px;">
+                Mode: Single Tap Trigger (1 click = 1 real game action). Zero auto-fire macros. Fully Fair-Play compliant.
+              </p>
+            </div>
+
+            <!-- Tab 5: Sensitivity Tuner -->
+            <div class="tab-content-view" id="view-sens">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div>
+                  <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">Interactive Test Aim Pad</h3>
+                  <div class="viewport-mock" id="sensTestPad" style="height: 200px; cursor: crosshair;">
+                    <div class="viewport-grid"></div>
+                    <div id="sensTarget1" style="position:absolute; left:30%; top:40%; width:30px; height:30px; border-radius:50%; border:2px solid var(--red); background:rgba(240,59,42,0.3); display:flex; align-items:center; justify-content:center; font-size:10px;">🎯</div>
+                    <div id="sensTarget2" style="position:absolute; left:70%; top:55%; width:30px; height:30px; border-radius:50%; border:2px solid var(--cyan); background:rgba(0,229,255,0.3); display:flex; align-items:center; justify-content:center; font-size:10px;">🎯</div>
+                    <div id="sensReticle" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border:2px solid #fff; border-radius:50%; pointer-events:none;"></div>
+                  </div>
+                  <span style="font-size: 10px; color: var(--muted); margin-top: 4px; display: block;">Drag pointer inside box to test mouse sensitivity response</span>
+                </div>
+                <div style="background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px;">
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap"><span>General Sensitivity</span><span id="genSensVal">68%</span></div>
+                    <input type="range" class="ctrl-slider" id="genSens" min="0" max="100" value="68" oninput="document.getElementById('genSensVal').innerText = this.value + '%'">
+                  </div>
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap"><span>Camera / Free Look</span><span id="camSensVal">72%</span></div>
+                    <input type="range" class="ctrl-slider" id="camSens" min="0" max="100" value="72" oninput="document.getElementById('camSensVal').innerText = this.value + '%'">
+                  </div>
+                  <div class="ctrl-row">
+                    <div class="ctrl-label-wrap"><span>2x Scope ADS</span><span id="scopeSensVal">54%</span></div>
+                    <input type="range" class="ctrl-slider" id="scopeSens" min="0" max="100" value="54" oninput="document.getElementById('scopeSensVal').innerText = this.value + '%'">
+                  </div>
+                  <button class="pill-btn" onclick="saveProfileNotification()" style="width:100%; justify-content:center; margin-top:8px;">Save Sensitivity</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 6: Profiles -->
+            <div class="tab-content-view" id="view-profiles">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="font-size: 15px; font-weight: 700;">Saved Control Profiles</h3>
+                <div style="display: flex; gap: 8px;">
+                  <button class="dark-pill-btn" onclick="exportProfileJson()" style="font-size: 11px; padding: 5px 12px;">Export JSON</button>
+                  <button class="dark-pill-btn" onclick="importProfileJson()" style="font-size: 11px; padding: 5px 12px;">Import JSON</button>
+                </div>
+              </div>
+              <div id="profilesList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+
+          </main>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Download Hub Section (Right below hero) -->
+  <section class="download-section-wrap" id="downloads">
+    <h2 class="section-title">Download MACRIC</h2>
+    <p class="section-sub">Direct official installer for PC emulators, Windows desktop and mobile devices.</p>
+
+    <!-- Smart OS Banner -->
+    <div style="background:var(--card-elevated); border:1px solid var(--green); border-radius:12px; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; margin-bottom:24px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:24px;">🎯</span>
+        <div>
+          <div style="font-size:14px; font-weight:700; color:var(--green);" id="detectedOsTitle">Recommended for your device: Android Emulator APK</div>
+          <div style="font-size:11px; color:var(--muted);">Full foreground HUD overlay with TYPE_APPLICATION_OVERLAY permissions.</div>
+        </div>
+      </div>
+      <span style="font-size:11px; color:var(--cyan); font-weight:700;">Verified v1.0.0</span>
+    </div>
+
+    <div class="download-grid">
+      <!-- Android / Emulator Card -->
+      <div class="dl-card highlighted" id="card-android">
+        <div class="dl-badge">POPULAR</div>
+        <div>
+          <div style="font-size:32px; margin-bottom:12px;">🤖</div>
+          <h3 style="font-size:18px; font-weight:800; color:#fff; margin-bottom:4px;">Android / Emulator</h3>
+          <p style="font-size:11px; color:var(--muted); margin-bottom:14px;">For BlueStacks 5, LDPlayer 9, MSI App Player & Android phones.</p>
+          <div style="font-size:11px; color:var(--cyan); margin-bottom:6px;">Version 1.0.0 · Size: <span id="apkSizeText">Available after first release</span></div>
+          <div style="font-size:9px; color:var(--muted); font-family:monospace; margin-bottom:16px; word-break:break-all;">SHA256: <span id="apkShaText">Available after first release</span></div>
+        </div>
+        <div>
+          <a class="pill-btn" id="androidDownloadBtn" href="https://github.com/aaliyan-nexus/macric/releases/latest/download/MACRIC.apk" target="_blank" rel="noopener noreferrer" style="width:100%; justify-content:center; margin-bottom:8px; text-decoration:none;">Download APK</a>
+          <button class="dark-pill-btn" onclick="openInstallModal()" style="width:100%; justify-content:center; font-size:11px;">How to Install</button>
+        </div>
+      </div>
+
+      <!-- PWA Install -->
+      <div class="dl-card" id="card-pwa">
+        <div>
+          <div style="font-size:32px; margin-bottom:12px;">🌐</div>
+          <h3 style="font-size:18px; font-weight:800; color:#fff; margin-bottom:4px;">Browser / iPhone</h3>
+          <p style="font-size:11px; color:var(--muted); margin-bottom:14px;">Install directly from Chrome or Safari. Works offline with PWA.</p>
+          <div style="font-size:11px; color:var(--cyan); margin-bottom:6px;">Instant · 0 MB Storage</div>
+          <div style="font-size:9px; color:var(--muted); font-family:monospace; margin-bottom:16px;">Verified Service Worker Cache</div>
+        </div>
+        <div>
+          <button class="dark-pill-btn" id="pwaInstallBtn" onclick="installPwa()" style="width:100%; justify-content:center; margin-bottom:8px; border-color:var(--violet);">Install App</button>
+          <p style="font-size:10px; color:var(--muted); text-align:center;">iOS: Safari Share → Add to Home Screen</p>
+        </div>
+      </div>
+
+      <!-- Windows Desktop -->
+      <div class="dl-card" id="card-windows">
+        <div>
+          <div style="font-size:32px; margin-bottom:12px;">🪟</div>
+          <h3 style="font-size:18px; font-weight:800; color:#fff; margin-bottom:4px;">Windows PC</h3>
+          <p style="font-size:11px; color:var(--muted); margin-bottom:14px;">Standalone desktop app with auto-updater for Windows 10/11.</p>
+          <div style="font-size:11px; color:var(--cyan); margin-bottom:6px;">MACRIC-Setup.exe · 64 MB</div>
+          <div style="font-size:9px; color:var(--muted); font-family:monospace; margin-bottom:16px;">GitHub Release Binary</div>
+        </div>
+        <div>
+          <button class="dark-pill-btn" onclick="triggerDownload('MACRIC-Setup.exe')" style="width:100%; justify-content:center; margin-bottom:8px;">Download for Windows</button>
+          <p style="font-size:10px; color:var(--muted); text-align:center;">Requires 64-bit Windows</p>
+        </div>
+      </div>
+
+      <!-- Mac / Linux -->
+      <div class="dl-card" style="opacity:0.5;">
+        <div>
+          <div style="font-size:32px; margin-bottom:12px;">🍎</div>
+          <h3 style="font-size:18px; font-weight:800; color:#fff; margin-bottom:4px;">Mac / Linux</h3>
+          <p style="font-size:11px; color:var(--muted); margin-bottom:14px;">macOS Apple Silicon & Linux packages.</p>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:16px;">Under Development</div>
+        </div>
+        <div>
+          <button class="dark-pill-btn" disabled style="width:100%; justify-content:center; cursor:not-allowed;">Coming Soon</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Counter -->
+    <div style="text-align:center; margin-top:30px; font-size:12px; color:var(--muted);">
+      ⚡ Over <strong style="color:var(--text);" id="dlCounter">14,820</strong> gamers tuning with MACRIC worldwide.
+    </div>
+  </section>
+
+  <!-- Floating Toggle Button -->
+  <div class="floating-macric-btn" onclick="toggleFloatingPanel()" title="Open MACRIC Controls">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+      <path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C14.92 14.1 12.98 17.5 11 21z"/>
+    </svg>
+  </div>
+
+  <!-- How to Install Modal -->
+  <div class="modal-overlay" id="installModal">
+    <div class="modal-box">
+      <h3 style="font-size:18px; font-weight:800; margin-bottom:12px;">Installing on Android Emulator</h3>
+      <p style="font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:16px;">
+        1. Download the <strong>MACRIC.apk</strong> file from the official GitHub Release link.<br>
+        2. Drag and drop the downloaded APK into your <strong>BlueStacks</strong>, <strong>LDPlayer</strong> or <strong>MSI</strong> emulator window.<br>
+        3. Open MACRIC and grant <em>"Display over other apps"</em> when prompted so the floating reticle HUD can draw on your game.<br>
+        4. Select your game and launch HUD!
+      </p>
+      <div style="text-align:right;">
+        <button class="pill-btn" onclick="document.getElementById('installModal').classList.remove('active')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Element -->
+  <div id="toast" style="position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:var(--card-elevated); border:1px solid var(--violet); color:#fff; padding:10px 20px; border-radius:999px; font-size:12px; font-weight:600; display:none; z-index:300; box-shadow:0 0 20px rgba(147,18,255,0.6);">
+    Profile saved
+  </div>
+
+  <script>
+    // Scaling system: 1672x941 centered
+    function scaleStage() {
+      const stage = document.getElementById('heroStage');
+      if (window.innerWidth > 900 && window.innerHeight > 600) {
+        const s = Math.min(window.innerWidth / 1672, window.innerHeight / 941);
+        stage.style.transform = `scale(${s})`;
+      } else {
+        stage.style.transform = 'none';
+      }
+    }
+    window.addEventListener('resize', scaleStage);
+    window.addEventListener('DOMContentLoaded', scaleStage);
+
+    // Procedural Stars
+    function initStars() {
+      const c = document.getElementById('stars-canvas');
+      const ctx = c.getContext('2d');
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 200; i++) {
+        const x = Math.random() * c.width;
+        const y = Math.random() * c.height;
+        const r = Math.random() * 1.5 + 0.2;
+        const alpha = Math.random() * 0.8 + 0.2;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    initStars();
+
+    // Planet Video & Fallback Canvas
+    const vid = document.getElementById('planet-video');
+    const pCanvas = document.getElementById('planet-canvas');
+    function drawFallbackRim() {
+      pCanvas.width = 1672;
+      pCanvas.height = 717;
+      const ctx = pCanvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 1672, 717);
+      grad.addColorStop(0, 'rgba(217, 38, 255, 0.4)');
+      grad.addColorStop(0.5, 'rgba(147, 18, 255, 0.8)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(836, -300, 750, 0, Math.PI);
+      ctx.fill();
+    }
+    drawFallbackRim();
+
+    if (window.innerWidth > 900) {
+      vid.style.display = 'block';
+      vid.addEventListener('canplay', () => {
+        vid.style.opacity = '1';
+        pCanvas.style.opacity = '0';
+      });
+    }
+
+    // Chart Canvas (Daily Sessions)
+    function drawChart() {
+      const c = document.getElementById('chart-canvas');
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      const w = c.width;
+      const h = c.height;
+      const pts = [0.3, 0.55, 0.42, 0.8, 0.65, 0.95, 0.85];
+      const step = w / (pts.length - 1);
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      pts.forEach((p, i) => {
+        const x = i * step;
+        const y = h - (p * h * 0.85);
+        if (i === 0) ctx.lineTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      const fillGrad = ctx.createLinearGradient(0, 0, 0, h);
+      fillGrad.addColorStop(0, 'rgba(147, 18, 255, 0.5)');
+      fillGrad.addColorStop(1, 'rgba(147, 18, 255, 0)');
+      ctx.fillStyle = fillGrad;
+      ctx.fill();
+
+      ctx.beginPath();
+      pts.forEach((p, i) => {
+        const x = i * step;
+        const y = h - (p * h * 0.85);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = '#a020ff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    setTimeout(drawChart, 200);
+
+    // Tab Switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content-view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.side-nav-item').forEach(i => i.classList.remove('active'));
+
+      const target = document.getElementById('view-' + tabId);
+      const btn = document.getElementById('tab-btn-' + tabId);
+      if (target) target.classList.add('active');
+      if (btn) btn.classList.add('active');
+
+      if (tabId === 'dashboard') setTimeout(drawChart, 100);
+      if (tabId === 'crosshair') updateCh();
+    }
+
+    // Games Management
+    const defaultGames = [
+      { id: 'ff', name: 'Free Fire MAX', pkg: 'com.dts.freefiremax', emoji: '🔥', connected: true },
+      { id: 'pubg', name: 'PUBG Mobile / BGMI', pkg: 'com.tencent.ig', emoji: '🎯', connected: false },
+      { id: 'codm', name: 'Call of Duty: Mobile', pkg: 'com.activision.callofduty.shooter', emoji: '⚡', connected: false },
+      { id: 'standoff', name: 'Standoff 2', pkg: 'com.axlebolt.standoff2', emoji: '💥', connected: false }
+    ];
+    let games = JSON.parse(localStorage.getItem('macric_games') || JSON.stringify(defaultGames));
+
+    function renderGames() {
+      const container = document.getElementById('gamesList');
+      if (!container) return;
+      container.innerHTML = '';
+      games.forEach(g => {
+        const row = document.createElement('div');
+        row.style = 'background:var(--card); border:1px solid ' + (g.connected ? 'var(--green)' : 'var(--border)') + '; border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;';
+        row.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">${g.emoji}</span>
+            <div>
+              <div style="font-size:13px; font-weight:700;">${g.name}</div>
+              <div style="font-size:10px; color:var(--muted);">${g.pkg}</div>
+            </div>
+          </div>
+          <div>
+            ${g.connected
+              ? `<button class="dark-pill-btn" onclick="toggleConnect('${g.id}')" style="font-size:11px; padding:4px 10px; color:var(--red);">Disconnect</button>`
+              : `<button class="pill-btn" onclick="toggleConnect('${g.id}')" style="font-size:11px; padding:4px 10px;">Connect</button>`
+            }
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+    renderGames();
+
+    function toggleConnect(id) {
+      games.forEach(g => {
+        if (g.id === id) g.connected = !g.connected;
+        else g.connected = false;
+      });
+      localStorage.setItem('macric_games', JSON.stringify(games));
+      renderGames();
+      const active = games.find(g => g.connected);
+      document.getElementById('activeGameBadge').innerText = active ? `${active.name} [Connected]` : 'No Game Linked';
+      showToast(active ? `Connected to ${active.name}` : 'Disconnected');
+    }
+
+    // Crosshair Studio
+    let chColor = '#9312ff';
+    function updateCh() {
+      const size = document.getElementById('chSize').value;
+      const thick = document.getElementById('chThick').value;
+      const gap = document.getElementById('chGap').value;
+      const style = document.getElementById('chStyleSelect').value;
+
+      document.getElementById('chSizeVal').innerText = size + 'px';
+      document.getElementById('chThickVal').innerText = thick + 'px';
+      document.getElementById('chGapVal').innerText = gap + 'px';
+
+      const g = document.getElementById('reticleGraphic');
+      let html = '';
+      if (style === 'dot') {
+        html = `<div style="width:${thick*3}px; height:${thick*3}px; border-radius:50%; background:${chColor};"></div>`;
+      } else if (style === 'circle') {
+        html = `<div style="width:${size}px; height:${size}px; border-radius:50%; border:${thick}px solid ${chColor};"></div>`;
+      } else {
+        // Cross with gap default
+        html = `
+          <div style="position:relative; width:${size}px; height:${size}px;">
+            <div style="position:absolute; left:0; top:50%; width:${(size/2)-gap}px; height:${thick}px; transform:translateY(-50%); background:${chColor};"></div>
+            <div style="position:absolute; right:0; top:50%; width:${(size/2)-gap}px; height:${thick}px; transform:translateY(-50%); background:${chColor};"></div>
+            <div style="position:absolute; top:0; left:50%; height:${(size/2)-gap}px; width:${thick}px; transform:translateX(-50%); background:${chColor};"></div>
+            <div style="position:absolute; bottom:0; left:50%; height:${(size/2)-gap}px; width:${thick}px; transform:translateX(-50%); background:${chColor};"></div>
+          </div>
+        `;
+      }
+      g.innerHTML = html;
+    }
+    function setChColor(c) {
+      chColor = c;
+      updateCh();
+    }
+    function resetChCenter() {
+      const g = document.getElementById('reticleGraphic');
+      g.style.left = '50%';
+      g.style.top = '50%';
+      document.getElementById('chCoords').innerText = 'Offset: (0, 0)';
+    }
+
+    // Viewport Draggable Crosshair
+    const vp = document.getElementById('chViewport');
+    let isDraggingCh = false;
+    vp.addEventListener('mousedown', (e) => { isDraggingCh = true; moveCh(e); });
+    window.addEventListener('mousemove', (e) => { if (isDraggingCh) moveCh(e); });
+    window.addEventListener('mouseup', () => { isDraggingCh = false; });
+    function moveCh(e) {
+      const rect = vp.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+      const g = document.getElementById('reticleGraphic');
+      g.style.left = x + 'px';
+      g.style.top = y + 'px';
+      const offX = Math.round(x - (rect.width / 2));
+      const offY = Math.round(y - (rect.height / 2));
+      document.getElementById('chCoords').innerText = `Offset: (${offX}, ${offY})`;
+    }
+
+    // Sensitivity Test Pad Aim Interaction
+    const testPad = document.getElementById('sensTestPad');
+    const sensReticle = document.getElementById('sensReticle');
+    testPad.addEventListener('mousemove', (e) => {
+      const rect = testPad.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      sensReticle.style.left = x + 'px';
+      sensReticle.style.top = y + 'px';
+    });
+
+    // Toast helper
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2400);
+    }
+    function saveProfileNotification() {
+      showToast('Profile saved: Custom Setup');
+    }
+
+    // Downloads Trigger
+    function triggerDownload(filename) {
+      showToast('Download started: ' + filename);
+      const c = document.getElementById('dlCounter');
+      c.innerText = (parseInt(c.innerText.replace(',', '')) + 1).toLocaleString();
+    }
+    function openInstallModal() {
+      document.getElementById('installModal').classList.add('active');
+    }
+
+    // PWA Install prompt listener
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btn = document.getElementById('pwaInstallBtn');
+      if (btn) btn.style.display = 'inline-flex';
+    });
+    function installPwa() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
+      } else {
+        showToast('To install on iOS: Tap Share → Add to Home Screen');
+      }
+    }
+
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration note:', err));
+    }
+
+    // Fetch real size and checksum from GitHub Releases API
+    function loadReleaseMetadata() {
+      let owner = 'aaliyan-nexus';
+      let repo = 'macric';
+
+      if (window.location.hostname.endsWith('github.io')) {
+        owner = window.location.hostname.split('.')[0];
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        if (pathParts.length > 0) {
+          repo = pathParts[0];
+        }
+      }
+
+      const releaseDownloadUrl = `https://github.com/${owner}/${repo}/releases/latest/download/MACRIC.apk`;
+
+      const dlBtn = document.getElementById('androidDownloadBtn');
+      if (dlBtn) {
+        dlBtn.href = releaseDownloadUrl;
+      }
+
+      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+
+      const sizeSpan = document.getElementById('apkSizeText');
+      const shaSpan = document.getElementById('apkShaText');
+
+      fetch(apiUrl)
+        .then(function(res) {
+          if (!res.ok) throw new Error('Status: ' + res.status);
+          return res.json();
+        })
+        .then(async function(data) {
+          const apkAsset = (data.assets || []).find(function(a) {
+            return a.name === 'MACRIC.apk' || a.name.endsWith('.apk');
+          });
+          if (apkAsset && sizeSpan) {
+            const mb = (apkAsset.size / (1024 * 1024)).toFixed(1);
+            sizeSpan.textContent = mb + ' MB';
+          }
+          const shaAsset = (data.assets || []).find(function(a) {
+            return a.name === 'MACRIC.apk.sha256' || a.name.endsWith('.sha256');
+          });
+          if (shaAsset && shaSpan) {
+            try {
+              const sRes = await fetch(shaAsset.browser_download_url);
+              if (sRes.ok) {
+                const sText = await sRes.text();
+                const hash = sText.trim().split(/\s+/)[0];
+                if (hash) shaSpan.textContent = hash;
+              }
+            } catch (_) {}
+          }
+        })
+        .catch(function() {
+          if (sizeSpan) sizeSpan.textContent = 'Available after first release';
+          if (shaSpan) shaSpan.textContent = 'Available after first release';
+        });
+    }
+
+    // Initial setup
+    updateCh();
+    loadReleaseMetadata();
+  </script>
+</body>
+</html>

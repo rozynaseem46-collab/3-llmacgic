@@ -1,0 +1,45 @@
+{
+  "name": "macric-desktop",
+  "version": "1.0.0",
+  "description": "MACRIC - Game Controls & Crosshair Engine for Android Emulators",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "author": "MACRIC Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.macric.app",
+    "productName": "MACRIC",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "MACRIC-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "MACRIC"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "../web/**/*"
+    ]
+  }
+}

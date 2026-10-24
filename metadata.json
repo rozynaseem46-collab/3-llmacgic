@@ -1,0 +1,8 @@
+{
+  "name": "Remix MACRIC",
+  "description": "MACRIC game-controls customization app for Android emulators. Custom crosshairs, fire buttons, sensitivity profiles, and overlay service.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

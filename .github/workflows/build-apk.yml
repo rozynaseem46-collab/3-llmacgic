@@ -1,0 +1,70 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare keystore and environment
+        run: |
+          touch .env
+          if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -keypass android -storepass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Debug APK
+        run: |
+          gradle assembleDebug --stacktrace
+
+      - name: Verify APK and Prepare Artifact
+        run: |
+          APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK_SRC" ]; then
+            echo "Searching for any generated APK..."
+            find app/build -name "*.apk" || true
+            exit 1
+          fi
+          cp "$APK_SRC" MACRIC.apk
+          sha256sum MACRIC.apk > MACRIC.apk.sha256
+          echo "Generated MACRIC.apk successfully!"
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MACRIC-APK
+          path: |
+            MACRIC.apk
+            MACRIC.apk.sha256
+          retention-days: 30
