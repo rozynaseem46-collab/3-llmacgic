@@ -36,9 +36,11 @@ enum class FireMode(val displayName: String, val description: String) {
 }
 
 enum class AimSmoothMode(val displayName: String, val description: String) {
-    INSTANT_TAP("Direct Tap", "1 tap = immediate synthetic tap directly on the in-game fire button."),
-    HEADSHOT_DRAG("Headshot Drag", "Smooth upward drag assist (Free Fire style auto headshot drag)."),
-    SMOOTH_RECOIL("Recoil Stabilizer", "Downward smooth compensation to stabilize burst recoil.")
+    HEADSHOT_DRAG("Pro J-Curve Headshot", "Explosive snap + Bezier head-lock curve (Free Fire Pro Drag)."),
+    SMOOTH_S_CURVE("S-Curve Auto-Drag", "Symmetrical smooth upward sweep with recoil compensation."),
+    SNIPER_SNAP("Sniper Micro-Snap", "Ultra-fast micro flick for AWM/M82B quick-scope headshots."),
+    SMOOTH_RECOIL("Anti-Recoil Stabilizer", "Downward smooth compensation to stabilize spray recoil."),
+    INSTANT_TAP("Direct Tap", "1 tap = immediate synthetic tap directly on the in-game fire button.")
 }
 
 data class FireButtonConfig(
@@ -51,9 +53,11 @@ data class FireButtonConfig(
     val colorHex: String = "#9312FF",
     val shape: FireButtonShape = FireButtonShape.CIRCLE,
     val mode: FireMode = FireMode.TAP,
-    val keyBinding: String = "Left Mouse",
+    val keyBinding: String = "Left Click",
     val aimSmoothMode: AimSmoothMode = AimSmoothMode.HEADSHOT_DRAG,
-    val dragDistance: Float = 75f
+    val dragDistance: Float = 85f,
+    val dragDurationMs: Long = 135L,
+    val jCurveDirection: String = "RIGHT"
 )
 
 data class SensitivityConfig(

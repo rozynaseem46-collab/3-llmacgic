@@ -16,13 +16,12 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
-import android.util.TypedValue
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -49,6 +48,7 @@ class MacricOverlayService : Service() {
     private var vibrator: Vibrator? = null
 
     companion object {
+        private const val TAG = "MacricOverlayService"
         const val ACTION_START_OVERLAY = "com.example.macric.ACTION_START_OVERLAY"
         const val ACTION_STOP_OVERLAY = "com.example.macric.ACTION_STOP_OVERLAY"
         const val ACTION_UPDATE_CONFIG = "com.example.macric.ACTION_UPDATE_CONFIG"
@@ -59,14 +59,30 @@ class MacricOverlayService : Service() {
 
         var isRunning: Boolean = false
             private set
+
+        private var activeInstance: MacricOverlayService? = null
+
+        /**
+         * Triggered by key filtering when mouse is locked in BlueStacks / PC emulators,
+         * or via hardware shortcuts. Injects the ultra-smooth headshot drag immediately.
+         */
+        fun triggerActiveFire() {
+            activeInstance?.fireActiveWeapon()
+        }
+
+        fun stopHoldingFire() {
+            activeInstance?.releaseActiveFire()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        activeInstance = this
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        isHudLocked = ProfileRepository(this).isHudLocked()
         createNotificationChannel()
     }
 
@@ -145,11 +161,11 @@ class MacricOverlayService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val lockTitle = if (isHudLocked) "Unlock to Move" else "Lock Position"
+        val lockTitle = if (isHudLocked) "Unlock HUD" else "Lock Position"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MACRIC Gaming HUD Active")
-            .setContentText(if (isHudLocked) "HUD Locked (Combat Mode) · Tap to Customize" else "HUD Unlocked (Drag to Position)")
+            .setContentText(if (isHudLocked) "HUD LOCKED (Combat Mode) · Tap to Shoot" else "HUD UNLOCKED (Drag to Adjust)")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_lock_lock, lockTitle, toggleLockPending)
@@ -300,6 +316,8 @@ class MacricOverlayService : Service() {
                     if (!isHudLocked) {
                         params.x = (params.x + dx).coerceIn(0, (screenWidth - sizePx).coerceAtLeast(0))
                         params.y = (params.y + dy).coerceIn(0, (screenHeight - sizePx).coerceAtLeast(0))
+                        fireButtonView.currentCenterX = params.x + sizePx / 2f
+                        fireButtonView.currentCenterY = params.y + sizePx / 2f
                         try {
                             wm.updateViewLayout(v, params)
                         } catch (e: Exception) {
@@ -315,10 +333,14 @@ class MacricOverlayService : Service() {
                     val repo = ProfileRepository(this)
                     repo.updateFireButtonPosition(currentProfile.id, btn.id, newXPercent, newYPercent)
                 },
-                onFireAction = { isDown ->
-                    handleFireAction(btn, params.x + sizePx / 2f, params.y + sizePx / 2f, isDown)
+                onFireAction = { isDown, view ->
+                    handleFireAction(btn, params.x + sizePx / 2f, params.y + sizePx / 2f, isDown, view)
                 }
-            )
+            ).apply {
+                currentCenterX = params.x + sizePx / 2f
+                currentCenterY = params.y + sizePx / 2f
+                currentLayoutParams = params
+            }
 
             try {
                 wm.addView(fireButtonView, params)
@@ -332,9 +354,18 @@ class MacricOverlayService : Service() {
     private var isHoldingFire = false
     private var holdFireRunnable: Runnable? = null
 
-    private fun handleFireAction(btn: FireButtonConfig, centerX: Float, centerY: Float, isDown: Boolean) {
+    /**
+     * Executes fire action when button is tapped on screen OR triggered via key in emulator.
+     */
+    private fun handleFireAction(
+        btn: FireButtonConfig,
+        centerX: Float,
+        centerY: Float,
+        isDown: Boolean,
+        targetView: FireButtonCanvasView? = null
+    ) {
         if (!isHudLocked) {
-            // In unlocked edit mode, pressing does not fire
+            // In unlocked edit mode, pressing does not fire; it allows repositioning
             return
         }
 
@@ -348,24 +379,24 @@ class MacricOverlayService : Service() {
                 mainHandler.post {
                     Toast.makeText(
                         this,
-                        "Enable 'MACRIC' in Accessibility Settings for real in-game touch fire!",
+                        "Enable 'MACRIC' in Android Accessibility Settings for real in-game touch fire!",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
             } else {
-                executeShotGesture(btn, centerX, centerY)
+                executeShotGesture(btn, centerX, centerY, targetView)
 
                 if (btn.mode == FireMode.HOLD) {
                     isHoldingFire = true
                     holdFireRunnable = object : Runnable {
                         override fun run() {
                             if (isHoldingFire) {
-                                executeShotGesture(btn, centerX, centerY)
-                                mainHandler.postDelayed(this, 120L)
+                                executeShotGesture(btn, centerX, centerY, targetView)
+                                mainHandler.postDelayed(this, 110L)
                             }
                         }
                     }
-                    mainHandler.postDelayed(holdFireRunnable!!, 120L)
+                    mainHandler.postDelayed(holdFireRunnable!!, 110L)
                 }
             }
         } else {
@@ -374,38 +405,86 @@ class MacricOverlayService : Service() {
         }
     }
 
-    private fun executeShotGesture(btn: FireButtonConfig, centerX: Float, centerY: Float) {
+    /**
+     * Dispatches synthetic headshot drag directly into Free Fire / games.
+     * Note: If targetView is provided, we set FLAG_NOT_TOUCHABLE temporarily during gesture
+     * so the synthetic stroke passes clean through to the underlying game window!
+     */
+    private fun executeShotGesture(
+        btn: FireButtonConfig,
+        centerX: Float,
+        centerY: Float,
+        targetView: FireButtonCanvasView? = null
+    ) {
         val mode = activeAimSmoothMode
-        when (mode) {
-            AimSmoothMode.HEADSHOT_DRAG -> {
-                // Free Fire style upward drag assist: drag upward from button position
-                val dragDistancePx = (btn.dragDistance * resources.displayMetrics.density).coerceIn(30f, 250f)
-                MacricAccessibilityService.dispatchSmoothDrag(
-                    startX = centerX,
-                    startY = centerY,
-                    dragUpPx = dragDistancePx,
-                    durationMs = 160L
-                )
-            }
-            AimSmoothMode.SMOOTH_RECOIL -> {
-                // Downward recoil compensation
-                val recoilPx = (-35f * resources.displayMetrics.density)
-                MacricAccessibilityService.dispatchSmoothDrag(
-                    startX = centerX,
-                    startY = centerY,
-                    dragUpPx = recoilPx,
-                    durationMs = 140L
-                )
-            }
-            AimSmoothMode.INSTANT_TAP -> {
-                // Clean instant tap
-                MacricAccessibilityService.dispatchTap(
-                    x = centerX,
-                    y = centerY,
-                    durationMs = 45L
-                )
+        val dragDistancePx = (btn.dragDistance * resources.displayMetrics.density).coerceIn(30f, 300f)
+        val durationMs = btn.dragDurationMs
+        val jDirection = btn.jCurveDirection
+
+        // Temporary Pass-Through: make overlay non-touchable during gesture injection so it doesn't collide
+        targetView?.let { v ->
+            val lp = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams)
+            if (lp != null && !isGhostMode) {
+                lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                try {
+                    windowManager?.updateViewLayout(v, lp)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set temporary pass-through on fire view", e)
+                }
             }
         }
+
+        MacricAccessibilityService.dispatchUltraSmoothHeadshotDrag(
+            startX = centerX,
+            startY = centerY,
+            dragUpPx = dragDistancePx,
+            durationMs = durationMs,
+            aimMode = mode,
+            jCurveDirection = jDirection,
+            onFinished = {
+                // Restore touchability after gesture stroke has been swept
+                targetView?.let { v ->
+                    mainHandler.post {
+                        val lp = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams)
+                        if (lp != null && !isGhostMode) {
+                            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                            try {
+                                windowManager?.updateViewLayout(v, lp)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Could not restore touchable on fire view", e)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    /**
+     * Triggers active primary fire weapon when mouse lock or emulator key is triggered
+     */
+    private fun fireActiveWeapon() {
+        val target = fireButtonViews.find { it.config.id == "right_fire" }
+            ?: fireButtonViews.firstOrNull() ?: return
+        handleFireAction(
+            target.config,
+            target.currentCenterX,
+            target.currentCenterY,
+            isDown = true,
+            targetView = target
+        )
+    }
+
+    private fun releaseActiveFire() {
+        val target = fireButtonViews.find { it.config.id == "right_fire" }
+            ?: fireButtonViews.firstOrNull() ?: return
+        handleFireAction(
+            target.config,
+            target.currentCenterX,
+            target.currentCenterY,
+            isDown = false,
+            targetView = target
+        )
     }
 
     private fun vibratePulse() {
@@ -424,8 +503,8 @@ class MacricOverlayService : Service() {
     /**
      * Floating Tactical HUD Control Bar:
      * Compact pill that allows users to:
-     * - Toggle Lock / Unlock HUD (prevents accidental movement while shooting)
-     * - Toggle Aim Smooth Drag Mode (Headshot Drag / Recoil / Instant)
+     * - Toggle Lock / Unlock HUD (firmly anchors button so it NEVER slides when tapping)
+     * - Toggle Aim Smooth Drag Mode (Pro J-Drag, S-Curve, Sniper Snap, Anti-Recoil, Direct Tap)
      * - Show Accessibility Status (1-click link to Settings if needed)
      * - Toggle Click-Through Ghost Mode
      * - Minimize / Expand
@@ -451,7 +530,7 @@ class MacricOverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = (24 * resources.displayMetrics.density).toInt()
+            y = (20 * resources.displayMetrics.density).toInt()
         }
 
         val density = resources.displayMetrics.density
@@ -469,7 +548,7 @@ class MacricOverlayService : Service() {
             }
         }
 
-        // 1. Minimized Icon Button / Expand Indicator
+        // Minimized Brand Icon
         val brandIcon = TextView(this).apply {
             text = "⚡"
             textSize = 14f
@@ -487,23 +566,23 @@ class MacricOverlayService : Service() {
         val lockButton = TextView(this).apply {
             text = if (isHudLocked) "🔒 LOCKED" else "🔓 MOVE HUD"
             textSize = 11f
-            setTextColor(if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FF5252"))
+            setTextColor(if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FFD600"))
             setTypeface(null, Typeface.BOLD)
             setPadding((8 * density).toInt(), (4 * density).toInt(), (8 * density).toInt(), (4 * density).toInt())
             background = GradientDrawable().apply {
-                setColor(if (isHudLocked) Color.parseColor("#2245B558") else Color.parseColor("#33FF5252"))
+                setColor(if (isHudLocked) Color.parseColor("#2245B558") else Color.parseColor("#33FFD600"))
                 cornerRadius = 12f * density
-                setStroke((1 * density).toInt(), if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FF5252"))
+                setStroke((1 * density).toInt(), if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FFD600"))
             }
         }
 
         lockButton.setOnClickListener {
             toggleHudLock()
             lockButton.text = if (isHudLocked) "🔒 LOCKED" else "🔓 MOVE HUD"
-            lockButton.setTextColor(if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FF5252"))
+            lockButton.setTextColor(if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FFD600"))
             (lockButton.background as? GradientDrawable)?.apply {
-                setColor(if (isHudLocked) Color.parseColor("#2245B558") else Color.parseColor("#33FF5252"))
-                setStroke((1 * density).toInt(), if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FF5252"))
+                setColor(if (isHudLocked) Color.parseColor("#2245B558") else Color.parseColor("#33FFD600"))
+                setStroke((1 * density).toInt(), if (isHudLocked) Color.parseColor("#45B558") else Color.parseColor("#FFD600"))
             }
         }
         contentContainer.addView(lockButton)
@@ -515,11 +594,7 @@ class MacricOverlayService : Service() {
 
         // Aim Smooth Mode Chip
         val aimModeChip = TextView(this).apply {
-            text = when (activeAimSmoothMode) {
-                AimSmoothMode.HEADSHOT_DRAG -> "🎯 Headshot Drag"
-                AimSmoothMode.SMOOTH_RECOIL -> "🛡️ Recoil Smooth"
-                AimSmoothMode.INSTANT_TAP -> "⚡ Direct Tap"
-            }
+            text = getAimModeChipLabel(activeAimSmoothMode)
             textSize = 10f
             setTextColor(Color.parseColor("#00E5FF"))
             setTypeface(null, Typeface.BOLD)
@@ -533,16 +608,14 @@ class MacricOverlayService : Service() {
 
         aimModeChip.setOnClickListener {
             activeAimSmoothMode = when (activeAimSmoothMode) {
-                AimSmoothMode.HEADSHOT_DRAG -> AimSmoothMode.SMOOTH_RECOIL
+                AimSmoothMode.HEADSHOT_DRAG -> AimSmoothMode.SMOOTH_S_CURVE
+                AimSmoothMode.SMOOTH_S_CURVE -> AimSmoothMode.SNIPER_SNAP
+                AimSmoothMode.SNIPER_SNAP -> AimSmoothMode.SMOOTH_RECOIL
                 AimSmoothMode.SMOOTH_RECOIL -> AimSmoothMode.INSTANT_TAP
                 AimSmoothMode.INSTANT_TAP -> AimSmoothMode.HEADSHOT_DRAG
             }
-            aimModeChip.text = when (activeAimSmoothMode) {
-                AimSmoothMode.HEADSHOT_DRAG -> "🎯 Headshot Drag"
-                AimSmoothMode.SMOOTH_RECOIL -> "🛡️ Recoil Smooth"
-                AimSmoothMode.INSTANT_TAP -> "⚡ Direct Tap"
-            }
-            Toast.makeText(this, "Aim Mode: ${activeAimSmoothMode.displayName}", Toast.LENGTH_SHORT).show()
+            aimModeChip.text = getAimModeChipLabel(activeAimSmoothMode)
+            Toast.makeText(this, "Aim Physics: ${activeAimSmoothMode.displayName}", Toast.LENGTH_SHORT).show()
             updateFireButtonsVisual()
         }
         contentContainer.addView(aimModeChip)
@@ -578,7 +651,7 @@ class MacricOverlayService : Service() {
                     Toast.makeText(this, "Open Android Settings > Accessibility to enable MACRIC", Toast.LENGTH_LONG).show()
                 }
             } else {
-                Toast.makeText(this, "MACRIC Touch Injection & Drag Engine is Active!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "MACRIC Touch & Headshot Engine is Active!", Toast.LENGTH_SHORT).show()
             }
         }
         contentContainer.addView(accStatusBadge)
@@ -631,7 +704,6 @@ class MacricOverlayService : Service() {
             } else {
                 contentContainer.visibility = View.VISIBLE
                 minButton.text = "◀"
-                // Refresh accessibility status text
                 accStatusBadge.text = if (MacricAccessibilityService.isRunning) "🟢 TOUCH ON" else "⚠️ ACCESSIBILITY"
             }
         }
@@ -691,11 +763,22 @@ class MacricOverlayService : Service() {
         }
     }
 
+    private fun getAimModeChipLabel(mode: AimSmoothMode): String {
+        return when (mode) {
+            AimSmoothMode.HEADSHOT_DRAG -> "👑 Pro J-Drag"
+            AimSmoothMode.SMOOTH_S_CURVE -> "🌊 S-Curve"
+            AimSmoothMode.SNIPER_SNAP -> "🎯 Sniper Snap"
+            AimSmoothMode.SMOOTH_RECOIL -> "🛡️ Anti-Recoil"
+            AimSmoothMode.INSTANT_TAP -> "⚡ Direct Tap"
+        }
+    }
+
     private fun toggleHudLock() {
         isHudLocked = !isHudLocked
+        ProfileRepository(this).setHudLocked(isHudLocked)
         updateFireButtonsVisual()
         val text = if (isHudLocked) {
-            "HUD Position LOCKED! Fire buttons are anchored for combat."
+            "HUD Position LOCKED! Fire buttons are anchored for combat (Zero slide on tap)."
         } else {
             "HUD Position UNLOCKED! Drag fire buttons and crosshair to adjust positions."
         }
@@ -706,7 +789,7 @@ class MacricOverlayService : Service() {
         val wm = windowManager ?: return
 
         for (v in fireButtonViews) {
-            val params = v.layoutParams as? WindowManager.LayoutParams ?: continue
+            val params = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams) ?: continue
             if (ghost) {
                 params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
             } else {
@@ -788,6 +871,9 @@ class MacricOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        if (activeInstance == this) {
+            activeInstance = null
+        }
         stopForegroundOverlay()
         super.onDestroy()
     }
@@ -876,8 +962,12 @@ class MacricOverlayService : Service() {
         private val aimSmoothProvider: () -> AimSmoothMode,
         private val onDragMove: (view: View, dx: Int, dy: Int) -> Unit,
         private val onDragFinished: () -> Unit,
-        private val onFireAction: (isDown: Boolean) -> Unit
+        private val onFireAction: (isDown: Boolean, view: FireButtonCanvasView) -> Unit
     ) : View(context) {
+
+        var currentCenterX: Float = 0f
+        var currentCenterY: Float = 0f
+        var currentLayoutParams: WindowManager.LayoutParams? = null
 
         private var initialTouchX = 0f
         private var initialTouchY = 0f
@@ -928,13 +1018,13 @@ class MacricOverlayService : Service() {
                     MotionEvent.ACTION_DOWN -> {
                         isPressedVisual = true
                         invalidate()
-                        onFireAction(true)
+                        onFireAction(true, this)
                         return true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         isPressedVisual = false
                         invalidate()
-                        onFireAction(false)
+                        onFireAction(false, this)
                         return true
                     }
                 }
@@ -954,7 +1044,7 @@ class MacricOverlayService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
-                    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
                         isDragging = true
                     }
                     if (isDragging) {
@@ -1046,12 +1136,12 @@ class MacricOverlayService : Service() {
             canvas.drawLine(cx, cy - radius, cx, cy - radius + markLen, strokePaint)
             canvas.drawLine(cx, cy + radius - markLen, cx, cy + radius, strokePaint)
 
-            // If unlocked, draw yellow edit dashed ring to indicate movable state
+            // If unlocked, draw yellow dashed ring to indicate movable adjustment state
             if (!isLocked) {
-                canvas.drawCircle(cx, cy, radius + 3f * density, editHaloPaint)
+                canvas.drawCircle(cx, cy, radius + 3.5f * density, editHaloPaint)
             }
 
-            // Draw label & keybinding text
+            // Draw label & mode text
             val labelSize = (radius * 0.36f).coerceIn(16f, 40f)
             textPaint.textSize = labelSize
             val subTextSize = (radius * 0.22f).coerceIn(11f, 22f)
@@ -1059,9 +1149,11 @@ class MacricOverlayService : Service() {
 
             val labelText = if (!isLocked) "DRAG" else config.label
             val subText = if (!isLocked) "Adjust" else when (aimMode) {
-                AimSmoothMode.HEADSHOT_DRAG -> "▲ DRAG"
-                AimSmoothMode.SMOOTH_RECOIL -> "▼ STAB"
-                AimSmoothMode.INSTANT_TAP -> "[TAP]"
+                AimSmoothMode.HEADSHOT_DRAG -> "👑 J-DRAG"
+                AimSmoothMode.SMOOTH_S_CURVE -> "🌊 S-CURVE"
+                AimSmoothMode.SNIPER_SNAP -> "🎯 SNIPER"
+                AimSmoothMode.SMOOTH_RECOIL -> "🛡️ RECOIL"
+                AimSmoothMode.INSTANT_TAP -> "⚡ TAP"
             }
 
             canvas.drawText(labelText, cx, cy - (labelSize * 0.08f), textPaint)

@@ -21,6 +21,27 @@ class ProfileRepository(private val context: Context) {
         private const val KEY_CONNECTED_GAME_ID = "connected_game_id"
         private const val KEY_FAIR_PLAY_ACCEPTED = "fair_play_accepted"
         private const val KEY_CUSTOM_GAMES = "custom_games"
+        private const val KEY_HUD_LOCKED = "hud_locked_combat"
+        private const val KEY_EMULATOR_MOUSE_LOCK_ENABLED = "emulator_mouse_lock_enabled"
+        private const val KEY_EMULATOR_TRIGGER_KEY = "emulator_trigger_key"
+    }
+
+    fun isHudLocked(): Boolean = prefs.getBoolean(KEY_HUD_LOCKED, true)
+
+    fun setHudLocked(locked: Boolean) {
+        prefs.edit().putBoolean(KEY_HUD_LOCKED, locked).apply()
+    }
+
+    fun isEmulatorMouseLockEnabled(): Boolean = prefs.getBoolean(KEY_EMULATOR_MOUSE_LOCK_ENABLED, true)
+
+    fun setEmulatorMouseLockEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_EMULATOR_MOUSE_LOCK_ENABLED, enabled).apply()
+    }
+
+    fun getEmulatorTriggerKey(): String = prefs.getString(KEY_EMULATOR_TRIGGER_KEY, "Space") ?: "Space"
+
+    fun setEmulatorTriggerKey(key: String) {
+        prefs.edit().putString(KEY_EMULATOR_TRIGGER_KEY, key).apply()
     }
 
     data class KnownPreset(
@@ -416,6 +437,8 @@ class ProfileRepository(private val context: Context) {
                 put("keyBinding", fb.keyBinding)
                 put("aimSmoothMode", fb.aimSmoothMode.name)
                 put("dragDistance", fb.dragDistance.toDouble())
+                put("dragDurationMs", fb.dragDurationMs)
+                put("jCurveDirection", fb.jCurveDirection)
             }
             buttons.put(b)
         }
@@ -480,7 +503,9 @@ class ProfileRepository(private val context: Context) {
                 val mode = try { FireMode.valueOf(modeStr) } catch (e: Exception) { FireMode.TAP }
                 val aimSmoothStr = b.optString("aimSmoothMode", "HEADSHOT_DRAG")
                 val aimSmooth = try { AimSmoothMode.valueOf(aimSmoothStr) } catch (e: Exception) { AimSmoothMode.HEADSHOT_DRAG }
-                val dragDist = b.optDouble("dragDistance", 75.0).toFloat()
+                val dragDist = b.optDouble("dragDistance", 85.0).toFloat()
+                val dragDuration = b.optLong("dragDurationMs", 135L)
+                val jDirection = b.optString("jCurveDirection", "RIGHT")
                 fireButtons.add(
                     FireButtonConfig(
                         id = b.optString("id", UUID.randomUUID().toString()),
@@ -494,7 +519,9 @@ class ProfileRepository(private val context: Context) {
                         mode = mode,
                         keyBinding = b.optString("keyBinding", "Left Click"),
                         aimSmoothMode = aimSmooth,
-                        dragDistance = dragDist
+                        dragDistance = dragDist,
+                        dragDurationMs = dragDuration,
+                        jCurveDirection = jDirection
                     )
                 )
             }
