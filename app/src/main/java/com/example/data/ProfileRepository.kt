@@ -38,7 +38,7 @@ class ProfileRepository(private val context: Context) {
         prefs.edit().putBoolean(KEY_EMULATOR_MOUSE_LOCK_ENABLED, enabled).apply()
     }
 
-    fun getEmulatorTriggerKey(): String = prefs.getString(KEY_EMULATOR_TRIGGER_KEY, "Space") ?: "Space"
+    fun getEmulatorTriggerKey(): String = prefs.getString(KEY_EMULATOR_TRIGGER_KEY, "Left Click") ?: "Left Click"
 
     fun setEmulatorTriggerKey(key: String) {
         prefs.edit().putString(KEY_EMULATOR_TRIGGER_KEY, key).apply()

@@ -464,8 +464,42 @@ class MacricOverlayService : Service() {
         val finalX = rawX.coerceIn(15f, (screenWidth - 15).toFloat())
         val finalY = rawY.coerceIn(15f, (screenHeight - 15).toFloat())
 
-        // Instantly flash visual on the fire button so user sees real-time proof of firing
-        targetView?.flashPressedVisual(durationMs.coerceAtLeast(220L))
+        // Subtle, elegant tactical pulse (decent & clean)
+        targetView?.flashPressedVisual(durationMs.coerceAtLeast(180L))
+
+        // CRITICAL FOR ACCESSIBILITY INJECTION:
+        // Temporarily make the fire overlay non-touchable during gesture dispatch so Android delivers
+        // the synthetic touch directly to Free Fire's punch/fire button underneath!
+        targetView?.let { v ->
+            val lp = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams)
+            if (lp != null) {
+                lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                try {
+                    windowManager?.updateViewLayout(v, lp)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set pass-through on fire view", e)
+                }
+            }
+        }
+
+        val restoreTouchable = {
+            targetView?.let { v ->
+                mainHandler.post {
+                    val lp = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams)
+                    if (lp != null) {
+                        lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                        try {
+                            windowManager?.updateViewLayout(v, lp)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not restore touchable on fire view", e)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Guaranteed safety restore in case callback is delayed
+        mainHandler.postDelayed({ restoreTouchable() }, durationMs + 40L)
 
         MacricAccessibilityService.dispatchUltraSmoothHeadshotDrag(
             startX = finalX,
@@ -475,6 +509,7 @@ class MacricOverlayService : Service() {
             aimMode = mode,
             jCurveDirection = jDirection,
             onFinished = { success ->
+                restoreTouchable()
                 Log.d(TAG, "Headshot gesture completed: $success")
             }
         )
@@ -1251,40 +1286,32 @@ class MacricOverlayService : Service() {
             val density = resources.displayMetrics.density
             val baseAlpha = (config.opacity * 255).toInt().coerceIn(30, 255)
 
-            // When firing: blazing Neon Crimson / Gold / Cyan shockwave!
-            val fillAlpha = if (isPressedVisual) 235 else (baseAlpha * 0.35f).toInt()
+            // Decent, elegant tactical feedback on fire press (clean esports cyan/violet styling)
+            val fillAlpha = if (isPressedVisual) (baseAlpha * 0.75f).toInt().coerceIn(60, 240) else (baseAlpha * 0.35f).toInt()
             val strokeAlpha = if (isPressedVisual) 255 else baseAlpha
 
-            fillPaint.color = if (isPressedVisual) Color.parseColor("#FF1744") else baseColor
+            fillPaint.color = baseColor
             fillPaint.alpha = fillAlpha
 
-            strokePaint.color = if (isPressedVisual) Color.parseColor("#FFD600") else baseColor
+            strokePaint.color = if (isPressedVisual) Color.parseColor("#00E5FF") else baseColor
             strokePaint.alpha = strokeAlpha
-            strokePaint.strokeWidth = (if (isPressedVisual) 6f else 3f) * density
+            strokePaint.strokeWidth = (if (isPressedVisual) 3.8f else 2.8f) * density
 
             glowPaint.color = if (isPressedVisual) Color.parseColor("#00E5FF") else baseColor
-            glowPaint.alpha = (if (isPressedVisual) 230 else (strokeAlpha * 0.4f).toInt())
-            glowPaint.strokeWidth = (if (isPressedVisual) 12f else 5f) * density
-
-            shockwavePaint.strokeWidth = 3f * density
-            shockwavePaint.alpha = if (isPressedVisual) 200 else 0
+            glowPaint.alpha = (if (isPressedVisual) 160 else (strokeAlpha * 0.35f).toInt())
+            glowPaint.strokeWidth = (if (isPressedVisual) 7f else 4f) * density
 
             val cx = width / 2f
             val cy = height / 2f
             val padding = 6f * density
             val radius = (Math.min(width, height) / 2f) - padding
 
-            // Draw outer shockwave pulse when active fire is executing
-            if (isPressedVisual) {
-                canvas.drawCircle(cx, cy, radius * 1.15f, shockwavePaint)
-            }
-
             when (config.shape) {
                 FireButtonShape.CIRCLE -> {
                     canvas.drawCircle(cx, cy, radius, glowPaint)
                     canvas.drawCircle(cx, cy, radius, fillPaint)
                     canvas.drawCircle(cx, cy, radius, strokePaint)
-                    canvas.drawCircle(cx, cy, radius * 0.74f, glowPaint)
+                    canvas.drawCircle(cx, cy, radius * 0.76f, glowPaint)
                 }
                 FireButtonShape.ROUNDED_SQUARE -> {
                     val rect = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
@@ -1321,28 +1348,17 @@ class MacricOverlayService : Service() {
                 canvas.drawCircle(cx, cy, radius + 3.5f * density, editHaloPaint)
             }
 
-            // Draw label & mode text with dynamic color feedback
+            // Draw label & mode text with clean, elegant styling
             val labelSize = (radius * 0.36f).coerceIn(16f, 40f)
             textPaint.textSize = labelSize
-            textPaint.color = if (isPressedVisual) Color.parseColor("#FFFF00") else Color.WHITE
+            textPaint.color = Color.WHITE
 
             val subTextSize = (radius * 0.22f).coerceIn(11f, 22f)
             subTextPaint.textSize = subTextSize
-            subTextPaint.color = if (isPressedVisual) Color.WHITE else Color.parseColor("#E0E0E0")
+            subTextPaint.color = if (isPressedVisual) Color.parseColor("#00E5FF") else Color.parseColor("#E0E0E0")
 
-            val labelText = if (isPressedVisual) {
-                "🔥 FIRE!"
-            } else if (!isLocked) {
-                "DRAG"
-            } else {
-                config.label
-            }
-
-            val subText = if (isPressedVisual) {
-                "⚡ DRAGGING"
-            } else if (!isLocked) {
-                "Adjust"
-            } else when (aimMode) {
+            val labelText = if (!isLocked) "DRAG" else config.label
+            val subText = if (!isLocked) "Adjust" else when (aimMode) {
                 AimSmoothMode.HEADSHOT_DRAG -> "👑 J-DRAG"
                 AimSmoothMode.SMOOTH_S_CURVE -> "🌊 S-CURVE"
                 AimSmoothMode.SNIPER_SNAP -> "🎯 SNIPER"

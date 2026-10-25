@@ -322,7 +322,7 @@ fun FireButtonScreen(
                         Text(text = "🖱️", fontSize = 14.sp)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "BlueStacks Mouse-Lock Trigger",
+                            text = "Auto Mouse-Lock Mode (Left Click)",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MacricCyan
@@ -334,6 +334,10 @@ fun FireButtonScreen(
                         onCheckedChange = {
                             mouseLockEnabled = it
                             repo.setEmulatorMouseLockEnabled(it)
+                            if (it) {
+                                repo.setEmulatorTriggerKey("Left Click")
+                                emulatorTriggerKey = "Left Click"
+                            }
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = MacricCyan,
@@ -345,7 +349,7 @@ fun FireButtonScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "When mouse is locked in BlueStacks (F1 / ~), pressing your trigger key automatically executes MACRIC's smooth headshot drag without touching emulator's native fire tool!",
+                    text = "Operates directly from Left Mouse Click! When mouse is locked in BlueStacks (F1 / ~), pressing Left Click automatically executes MACRIC's smooth recoil & headshot drag.",
                     fontSize = 10.sp,
                     color = MacricTextMuted,
                     lineHeight = 13.sp
@@ -353,66 +357,42 @@ fun FireButtonScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text(text = "Active Trigger Key:", fontSize = 10.sp, color = MacricTextMuted)
-                Spacer(modifier = Modifier.height(4.dp))
-
-                val triggerKeyChoices = listOf("Space", "Left Click", "F", "E", "V", "Shift", "Ctrl", "Volume Up")
+                // Auto Active Badge & Key Choice
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MacricCyan.copy(alpha = 0.12f))
+                        .border(1.dp, MacricCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    triggerKeyChoices.take(4).forEach { key ->
-                        val isSelected = emulatorTriggerKey.equals(key, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) MacricCyan else MacricDarkCardElevated)
-                                .clickable {
-                                    emulatorTriggerKey = key
-                                    repo.setEmulatorTriggerKey(key)
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = key,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) Color.Black else Color.White
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MacricCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Active Trigger: Left Click (AUTO)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    triggerKeyChoices.drop(4).forEach { key ->
-                        val isSelected = emulatorTriggerKey.equals(key, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) MacricCyan else MacricDarkCardElevated)
-                                .clickable {
-                                    emulatorTriggerKey = key
-                                    repo.setEmulatorTriggerKey(key)
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = key,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) Color.Black else Color.White
-                            )
-                        }
-                    }
+                    Text(
+                        text = "READY",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MacricCyan,
+                        modifier = Modifier
+                            .background(MacricCyan.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
             }
         }
