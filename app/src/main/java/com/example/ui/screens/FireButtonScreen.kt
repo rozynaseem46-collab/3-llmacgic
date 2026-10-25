@@ -30,9 +30,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.model.AimSmoothMode
 import com.example.model.FireButtonConfig
 import com.example.model.FireButtonShape
 import com.example.model.FireMode
+import com.example.service.MacricAccessibilityService
 import com.example.ui.theme.*
 
 @Composable
@@ -41,7 +43,8 @@ fun FireButtonScreen(
     onFireButtonsChange: (List<FireButtonConfig>) -> Unit,
     onAddFireButton: () -> Unit,
     onRemoveFireButton: (String) -> Unit,
-    onSaveProfile: () -> Unit
+    onSaveProfile: () -> Unit,
+    onRequestAccessibilitySettings: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     var selectedButtonId by remember(fireButtons) {
@@ -53,6 +56,7 @@ fun FireButtonScreen(
     var showExportKeymapDialog by remember { mutableStateOf(false) }
 
     val activeSelected = fireButtons.find { it.id == selectedButtonId } ?: fireButtons.firstOrNull()
+    val isAccessibilityActive = MacricAccessibilityService.isRunning
 
     Column(
         modifier = Modifier
@@ -76,7 +80,7 @@ fun FireButtonScreen(
                     color = MacricTextPrimary
                 )
                 Text(
-                    text = "HUD positioning, emulator bindings & layout editor",
+                    text = "Position locking, aim smoothing & synthetic fire injection",
                     fontSize = 11.sp,
                     color = MacricTextMuted
                 )
@@ -93,7 +97,7 @@ fun FireButtonScreen(
                 ) {
                     Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Emulator Keymap", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("Keymap", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -106,6 +110,77 @@ fun FireButtonScreen(
                     modifier = Modifier.testTag("fire_button_save_btn")
                 ) {
                     Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Accessibility & Lock Feature Banner
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    if (isAccessibilityActive) MacricGreen.copy(alpha = 0.5f) else MacricOrange.copy(alpha = 0.5f),
+                    RoundedCornerShape(14.dp)
+                ),
+            colors = CardDefaults.cardColors(containerColor = MacricDarkCardElevated),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (isAccessibilityActive) MacricGreen.copy(alpha = 0.15f) else MacricOrange.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isAccessibilityActive) Icons.Default.CheckCircle else Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (isAccessibilityActive) MacricGreen else MacricOrange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = if (isAccessibilityActive) "Synthetic Touch Injection: READY" else "Touch Injection: ACCESSIBILITY REQUIRED",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isAccessibilityActive) MacricGreen else MacricOrange
+                        )
+                        Text(
+                            text = if (isAccessibilityActive)
+                                "When overlay is LOCKED, tapping fires real touch & aim drag gestures into games."
+                            else
+                                "Turn on MACRIC in Accessibility Settings to enable real in-game fire taps on mobile & BlueStacks.",
+                            fontSize = 9.5.sp,
+                            color = MacricTextMuted,
+                            lineHeight = 13.sp
+                        )
+                    }
+                }
+
+                if (!isAccessibilityActive) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = onRequestAccessibilitySettings,
+                        colors = ButtonDefaults.buttonColors(containerColor = MacricOrange),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("enable_accessibility_btn")
+                    ) {
+                        Text("Enable", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    }
                 }
             }
         }
@@ -503,6 +578,97 @@ fun FireButtonScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Aim Smooth Mode Selection
+                    Text(text = "Aim Smooth & Headshot Assist", fontSize = 11.sp, color = MacricTextMuted)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AimSmoothMode.values().forEach { aimMode ->
+                            val isAimSelected = activeSelected.aimSmoothMode == aimMode
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(
+                                        1.dp,
+                                        if (isAimSelected) MacricCyan else MacricBorder,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable {
+                                        val updated = fireButtons.map {
+                                            if (it.id == activeSelected.id) it.copy(aimSmoothMode = aimMode) else it
+                                        }
+                                        onFireButtonsChange(updated)
+                                    },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isAimSelected) MacricCyan.copy(alpha = 0.15f) else MacricDarkCardElevated
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isAimSelected,
+                                        onClick = {
+                                            val updated = fireButtons.map {
+                                                if (it.id == activeSelected.id) it.copy(aimSmoothMode = aimMode) else it
+                                            }
+                                            onFireButtonsChange(updated)
+                                        },
+                                        colors = RadioButtonDefaults.colors(selectedColor = MacricCyan)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column {
+                                        Text(
+                                            text = aimMode.displayName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isAimSelected) MacricCyan else MacricTextPrimary
+                                        )
+                                        Text(
+                                            text = aimMode.description,
+                                            fontSize = 9.5.sp,
+                                            color = MacricTextMuted,
+                                            lineHeight = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (activeSelected.aimSmoothMode != AimSmoothMode.INSTANT_TAP) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Upward Drag Intensity", fontSize = 11.sp, color = MacricTextMuted)
+                                Text("${activeSelected.dragDistance.toInt()} px", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MacricCyan)
+                            }
+                            Slider(
+                                value = activeSelected.dragDistance,
+                                onValueChange = { newDist ->
+                                    val updated = fireButtons.map {
+                                        if (it.id == activeSelected.id) it.copy(dragDistance = newDist) else it
+                                    }
+                                    onFireButtonsChange(updated)
+                                },
+                                valueRange = 30f..150f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MacricCyan,
+                                    activeTrackColor = MacricCyan,
+                                    inactiveTrackColor = MacricBorder
+                                )
+                            )
                         }
                     }
 

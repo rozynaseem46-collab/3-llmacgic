@@ -134,7 +134,8 @@ class MainActivity : ComponentActivity() {
                                     onFireButtonsChange = { viewModel.updateFireButtons(it) },
                                     onAddFireButton = { viewModel.addFireButton() },
                                     onRemoveFireButton = { viewModel.removeFireButton(it) },
-                                    onSaveProfile = { viewModel.saveActiveProfile() }
+                                    onSaveProfile = { viewModel.saveActiveProfile() },
+                                    onRequestAccessibilitySettings = { openAccessibilitySettings() }
                                 )
                             }
                             MacricTab.SENSITIVITY -> {
@@ -198,6 +199,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
             viewModel.showToast("Please grant 'Display over other apps' to enable HUD")
+        }
+    }
+
+    private fun openAccessibilitySettings() {
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+            viewModel.showToast("Find 'MACRIC' in Accessibility and turn it ON to enable in-game fire taps")
+        } catch (e: Exception) {
+            viewModel.showToast("Open Android Settings > Accessibility to enable MACRIC")
         }
     }
 }

@@ -35,6 +35,12 @@ enum class FireMode(val displayName: String, val description: String) {
     HOLD("Hold Mode", "Held down continuously for automatic weapons. No macros or burst scripts.")
 }
 
+enum class AimSmoothMode(val displayName: String, val description: String) {
+    INSTANT_TAP("Direct Tap", "1 tap = immediate synthetic tap directly on the in-game fire button."),
+    HEADSHOT_DRAG("Headshot Drag", "Smooth upward drag assist (Free Fire style auto headshot drag)."),
+    SMOOTH_RECOIL("Recoil Stabilizer", "Downward smooth compensation to stabilize burst recoil.")
+}
+
 data class FireButtonConfig(
     val id: String,
     val label: String,
@@ -45,7 +51,9 @@ data class FireButtonConfig(
     val colorHex: String = "#9312FF",
     val shape: FireButtonShape = FireButtonShape.CIRCLE,
     val mode: FireMode = FireMode.TAP,
-    val keyBinding: String = "Left Mouse"
+    val keyBinding: String = "Left Mouse",
+    val aimSmoothMode: AimSmoothMode = AimSmoothMode.HEADSHOT_DRAG,
+    val dragDistance: Float = 75f
 )
 
 data class SensitivityConfig(

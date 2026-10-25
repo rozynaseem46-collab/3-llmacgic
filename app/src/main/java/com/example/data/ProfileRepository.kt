@@ -414,6 +414,8 @@ class ProfileRepository(private val context: Context) {
                 put("shape", fb.shape.name)
                 put("mode", fb.mode.name)
                 put("keyBinding", fb.keyBinding)
+                put("aimSmoothMode", fb.aimSmoothMode.name)
+                put("dragDistance", fb.dragDistance.toDouble())
             }
             buttons.put(b)
         }
@@ -476,6 +478,9 @@ class ProfileRepository(private val context: Context) {
                 val shape = try { FireButtonShape.valueOf(shapeStr) } catch (e: Exception) { FireButtonShape.CIRCLE }
                 val modeStr = b.optString("mode", "TAP")
                 val mode = try { FireMode.valueOf(modeStr) } catch (e: Exception) { FireMode.TAP }
+                val aimSmoothStr = b.optString("aimSmoothMode", "HEADSHOT_DRAG")
+                val aimSmooth = try { AimSmoothMode.valueOf(aimSmoothStr) } catch (e: Exception) { AimSmoothMode.HEADSHOT_DRAG }
+                val dragDist = b.optDouble("dragDistance", 75.0).toFloat()
                 fireButtons.add(
                     FireButtonConfig(
                         id = b.optString("id", UUID.randomUUID().toString()),
@@ -487,7 +492,9 @@ class ProfileRepository(private val context: Context) {
                         colorHex = b.optString("colorHex", "#9312FF"),
                         shape = shape,
                         mode = mode,
-                        keyBinding = b.optString("keyBinding", "Left Click")
+                        keyBinding = b.optString("keyBinding", "Left Click"),
+                        aimSmoothMode = aimSmooth,
+                        dragDistance = dragDist
                     )
                 )
             }

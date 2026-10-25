@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">MACRIC</string>
+    <string name="accessibility_service_description">Enables MACRIC to trigger real fire button taps and smooth aim drag gestures during gameplay on Android and PC emulators like BlueStacks.</string>
 </resources>

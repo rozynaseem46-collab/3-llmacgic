@@ -20,4 +20,5 @@ val MacricTextMuted = Color(0xFF8B8988)
 val MacricGreen = Color(0xFF45B558)
 val MacricRed = Color(0xFFF03B2A)
 val MacricYellow = Color(0xFFFFD600)
+val MacricOrange = Color(0xFFFF9100)
 
