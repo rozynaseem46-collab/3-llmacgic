@@ -270,10 +270,13 @@ class MacricAccessibilityService : AccessibilityService() {
                 keyCode == KeyEvent.KEYCODE_BUTTON_R1 ||
                 keyCode == KeyEvent.KEYCODE_BUTTON_A ||
                 keyCode == KeyEvent.KEYCODE_BUTTON_1 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_2 ||
                 keyCode == KeyEvent.KEYCODE_BUTTON_THUMBL ||
                 keyCode == KeyEvent.KEYCODE_SPACE ||
                 keyCode == KeyEvent.KEYCODE_ENTER ||
-                keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                keyCode == KeyEvent.KEYCODE_CTRL_LEFT ||
+                keyCode == KeyEvent.KEYCODE_CTRL_RIGHT
     }
 
     private fun isEventMatchingKey(keyCode: Int, keyName: String): Boolean {

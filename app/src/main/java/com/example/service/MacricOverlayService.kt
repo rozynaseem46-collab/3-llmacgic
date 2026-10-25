@@ -303,7 +303,7 @@ class MacricOverlayService : Service() {
         val metrics = resources.displayMetrics
 
         for (btn in buttons) {
-            val sizePx = (btn.size * metrics.density).toInt().coerceIn(52, 280)
+            val sizePx = ((btn.size + 20f) * metrics.density).toInt().coerceIn(75, 300)
             val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
@@ -313,7 +313,9 @@ class MacricOverlayService : Service() {
 
             val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_SPLIT_TOUCH or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
             val params = WindowManager.LayoutParams(
                 sizePx,
@@ -1217,16 +1219,18 @@ class MacricOverlayService : Service() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val isLocked = isLockedProvider()
+            val action = event.actionMasked
 
             if (isLocked) {
                 // Combat / Play mode: FIRMLY LOCKED! Absolute zero dragging!
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        flashPressedVisual(280L)
+                // Supports multi-touch (e.g. while moving with joystick or aiming camera)
+                when (action) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                        flashPressedVisual(200L)
                         onFireAction(true, this)
                         return true
                     }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
                         isPressedVisual = false
                         invalidate()
                         onFireAction(false, this)
