@@ -311,13 +311,9 @@ class MacricOverlayService : Service() {
                 WindowManager.LayoutParams.TYPE_PHONE
             }
 
-            var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-
-            if (isGhostMode) {
-                flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            }
 
             val params = WindowManager.LayoutParams(
                 sizePx,
@@ -420,17 +416,15 @@ class MacricOverlayService : Service() {
                     }
                 }
                 mainHandler.postDelayed(holdFireRunnable!!, 110L)
+            } else {
+                // TAP mode: Execute immediately on press down for instant firing!
+                executeShotGesture(btn, centerX, centerY, targetView)
             }
         } else {
             // ACTION_UP:
             if (isHoldingFire) {
                 isHoldingFire = false
                 holdFireRunnable?.let { mainHandler.removeCallbacks(it) }
-            } else if (btn.mode == FireMode.TAP && isAccRunning) {
-                // TAP mode: Execute on finger release!
-                // Critical Android fix: The physical finger has cleared the screen,
-                // so dispatchGesture executes with ZERO pointer collision!
-                executeShotGesture(btn, centerX, centerY, targetView)
             }
         }
     }
@@ -470,18 +464,8 @@ class MacricOverlayService : Service() {
         val finalX = rawX.coerceIn(15f, (screenWidth - 15).toFloat())
         val finalY = rawY.coerceIn(15f, (screenHeight - 15).toFloat())
 
-        // Temporary Pass-Through: make overlay non-touchable during gesture injection so it doesn't collide
-        targetView?.let { v ->
-            val lp = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams)
-            if (lp != null && !isGhostMode) {
-                lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                try {
-                    windowManager?.updateViewLayout(v, lp)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not set temporary pass-through on fire view", e)
-                }
-            }
-        }
+        // Instantly flash visual on the fire button so user sees real-time proof of firing
+        targetView?.flashPressedVisual(durationMs.coerceAtLeast(220L))
 
         MacricAccessibilityService.dispatchUltraSmoothHeadshotDrag(
             startX = finalX,
@@ -491,20 +475,7 @@ class MacricOverlayService : Service() {
             aimMode = mode,
             jCurveDirection = jDirection,
             onFinished = { success ->
-                // Restore touchability after gesture stroke has been swept
-                targetView?.let { v ->
-                    mainHandler.post {
-                        val lp = v.currentLayoutParams ?: (v.layoutParams as? WindowManager.LayoutParams)
-                        if (lp != null && !isGhostMode) {
-                            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-                            try {
-                                windowManager?.updateViewLayout(v, lp)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Could not restore touchable on fire view", e)
-                            }
-                        }
-                    }
-                }
+                Log.d(TAG, "Headshot gesture completed: $success")
             }
         )
     }
@@ -516,6 +487,7 @@ class MacricOverlayService : Service() {
         val target = fireButtonViews.find { it.config.id == "right_fire" }
             ?: fireButtonViews.firstOrNull() ?: return
         vibratePulse()
+        target.flashPressedVisual(250L)
         if (!MacricAccessibilityService.isRunning) {
             mainHandler.post {
                 Toast.makeText(
@@ -548,6 +520,7 @@ class MacricOverlayService : Service() {
             Toast.makeText(this, "No fire button found to test!", Toast.LENGTH_SHORT).show()
             return
         }
+        target.flashPressedVisual(300L)
         if (!MacricAccessibilityService.isRunning) {
             Toast.makeText(this, "⚠️ Accessibility is OFF! Turn ON MACRIC in Settings to test tap.", Toast.LENGTH_LONG).show()
             try {
@@ -762,26 +735,74 @@ class MacricOverlayService : Service() {
             layoutParams = LinearLayout.LayoutParams((6 * density).toInt(), 1)
         })
 
-        // Ghost Mode Toggle (Pass-through for BlueStacks keymapper)
+        // Fire Mode / Ghost Pass Toggle
         val ghostToggle = TextView(this).apply {
-            text = if (isGhostMode) "👻 PASS" else "🎮 ACTIVE"
+            text = if (isGhostMode) "👻 PASS OFF" else "🎮 FIRE ON"
             textSize = 10f
-            setTextColor(if (isGhostMode) Color.parseColor("#E0E0E0") else Color.parseColor("#CE93D8"))
+            setTextColor(if (isGhostMode) Color.parseColor("#B0BEC5") else Color.parseColor("#45B558"))
+            setTypeface(null, Typeface.BOLD)
             setPadding((6 * density).toInt(), (4 * density).toInt(), (6 * density).toInt(), (4 * density).toInt())
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#229312FF"))
+                setColor(if (isGhostMode) Color.parseColor("#22B0BEC5") else Color.parseColor("#2245B558"))
                 cornerRadius = 10f * density
+                setStroke((1 * density).toInt(), if (isGhostMode) Color.parseColor("#78909C") else Color.parseColor("#45B558"))
             }
         }
 
         ghostToggle.setOnClickListener {
             isGhostMode = !isGhostMode
-            ghostToggle.text = if (isGhostMode) "👻 PASS" else "🎮 ACTIVE"
+            ghostToggle.text = if (isGhostMode) "👻 PASS OFF" else "🎮 FIRE ON"
+            ghostToggle.setTextColor(if (isGhostMode) Color.parseColor("#B0BEC5") else Color.parseColor("#45B558"))
+            (ghostToggle.background as? GradientDrawable)?.apply {
+                setColor(if (isGhostMode) Color.parseColor("#22B0BEC5") else Color.parseColor("#2245B558"))
+                setStroke((1 * density).toInt(), if (isGhostMode) Color.parseColor("#78909C") else Color.parseColor("#45B558"))
+            }
             toggleGhostMode(isGhostMode)
-            val msg = if (isGhostMode) "Click-Through enabled (Mouse clicks pass to BlueStacks keymapper)" else "Active Fire mode (Clicks trigger MACRIC gestures)"
+            val msg = if (isGhostMode) {
+                "👻 PASS OFF: Fire button touches are ignored (clicks pass to game/BlueStacks)."
+            } else {
+                "🎮 FIRE ON: Fire button is ACTIVE! Clicks trigger MACRIC recoil & headshot drag."
+            }
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
         contentContainer.addView(ghostToggle)
+
+        // Spacer
+        contentContainer.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams((6 * density).toInt(), 1)
+        })
+
+        // PC Emulator Trigger Key Chip (Space, F, Left Click)
+        val repo = ProfileRepository(this)
+        var currentTriggerKey = repo.getEmulatorTriggerKey()
+        val triggerKeyChip = TextView(this).apply {
+            text = "⌨️ $currentTriggerKey"
+            textSize = 10f
+            setTextColor(Color.parseColor("#FFD54F"))
+            setTypeface(null, Typeface.BOLD)
+            setPadding((6 * density).toInt(), (4 * density).toInt(), (6 * density).toInt(), (4 * density).toInt())
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#22FFD54F"))
+                cornerRadius = 10f * density
+                setStroke((1 * density).toInt(), Color.parseColor("#FFD54F"))
+            }
+        }
+
+        val availableKeys = listOf("Space", "F", "E", "Left Click")
+        triggerKeyChip.setOnClickListener {
+            val currentIndex = availableKeys.indexOfFirst { it.equals(currentTriggerKey, ignoreCase = true) }
+            val nextKey = availableKeys[(if (currentIndex >= 0) currentIndex + 1 else 0) % availableKeys.size]
+            currentTriggerKey = nextKey
+            repo.setEmulatorTriggerKey(nextKey)
+            triggerKeyChip.text = "⌨️ $nextKey"
+            val tip = if (nextKey.equals("Left Click", ignoreCase = true)) {
+                "In BlueStacks, assign a Tap spot with Left Click over MACRIC fire button!"
+            } else {
+                "Press [$nextKey] key on your keyboard while mouse is locked to fire!"
+            }
+            Toast.makeText(this, "⌨️ Emulator Key: $nextKey\n$tip", Toast.LENGTH_LONG).show()
+        }
+        contentContainer.addView(triggerKeyChip)
 
         rootLayout.addView(contentContainer)
 
@@ -1089,6 +1110,12 @@ class MacricOverlayService : Service() {
             strokeCap = Paint.Cap.ROUND
         }
 
+        private val shockwavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            color = Color.parseColor("#00E5FF")
+        }
+
         private val editHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 3f * resources.displayMetrics.density
@@ -1110,6 +1137,49 @@ class MacricOverlayService : Service() {
 
         private val hexPath = Path()
 
+        private val resetVisualRunnable = Runnable {
+            isPressedVisual = false
+            invalidate()
+        }
+
+        /**
+         * Flashes the fire button with an intense glowing color change (Neon Red / Gold / Cyan shockwave)
+         * to provide instant, unambiguous visual proof to the player that fire + headshot drag has been executed!
+         */
+        fun flashPressedVisual(durationMs: Long = 240L) {
+            isPressedVisual = true
+            invalidate()
+            removeCallbacks(resetVisualRunnable)
+            postDelayed(resetVisualRunnable, durationMs)
+        }
+
+        /**
+         * Intercepts PC emulator mouse events (e.g. Left Click / BUTTON_PRIMARY when mouse is locked in BlueStacks)
+         */
+        override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+            val isPrimaryClicked = (event.buttonState and MotionEvent.BUTTON_PRIMARY != 0) ||
+                    (event.actionButton == MotionEvent.BUTTON_PRIMARY)
+
+            if (isPrimaryClicked || event.action == MotionEvent.ACTION_BUTTON_PRESS) {
+                flashPressedVisual(260L)
+                onFireAction(true, this)
+                return true
+            } else if (event.action == MotionEvent.ACTION_BUTTON_RELEASE) {
+                onFireAction(false, this)
+                return true
+            }
+            return super.onGenericMotionEvent(event)
+        }
+
+        override fun onHoverEvent(event: MotionEvent): Boolean {
+            if (event.buttonState and MotionEvent.BUTTON_PRIMARY != 0) {
+                flashPressedVisual(260L)
+                onFireAction(true, this)
+                return true
+            }
+            return super.onHoverEvent(event)
+        }
+
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val isLocked = isLockedProvider()
 
@@ -1117,8 +1187,7 @@ class MacricOverlayService : Service() {
                 // Combat / Play mode: FIRMLY LOCKED! Absolute zero dragging!
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        isPressedVisual = true
-                        invalidate()
+                        flashPressedVisual(280L)
                         onFireAction(true, this)
                         return true
                     }
@@ -1181,31 +1250,41 @@ class MacricOverlayService : Service() {
 
             val density = resources.displayMetrics.density
             val baseAlpha = (config.opacity * 255).toInt().coerceIn(30, 255)
-            val fillAlpha = if (isPressedVisual) (baseAlpha * 0.85f).toInt().coerceIn(70, 255) else (baseAlpha * 0.35f).toInt()
+
+            // When firing: blazing Neon Crimson / Gold / Cyan shockwave!
+            val fillAlpha = if (isPressedVisual) 235 else (baseAlpha * 0.35f).toInt()
             val strokeAlpha = if (isPressedVisual) 255 else baseAlpha
 
-            fillPaint.color = baseColor
+            fillPaint.color = if (isPressedVisual) Color.parseColor("#FF1744") else baseColor
             fillPaint.alpha = fillAlpha
 
-            strokePaint.color = if (isPressedVisual) Color.parseColor("#00E5FF") else baseColor
+            strokePaint.color = if (isPressedVisual) Color.parseColor("#FFD600") else baseColor
             strokePaint.alpha = strokeAlpha
-            strokePaint.strokeWidth = (if (isPressedVisual) 4.5f else 3f) * density
+            strokePaint.strokeWidth = (if (isPressedVisual) 6f else 3f) * density
 
             glowPaint.color = if (isPressedVisual) Color.parseColor("#00E5FF") else baseColor
-            glowPaint.alpha = (strokeAlpha * 0.4f).toInt()
-            glowPaint.strokeWidth = (if (isPressedVisual) 8f else 5f) * density
+            glowPaint.alpha = (if (isPressedVisual) 230 else (strokeAlpha * 0.4f).toInt())
+            glowPaint.strokeWidth = (if (isPressedVisual) 12f else 5f) * density
+
+            shockwavePaint.strokeWidth = 3f * density
+            shockwavePaint.alpha = if (isPressedVisual) 200 else 0
 
             val cx = width / 2f
             val cy = height / 2f
             val padding = 6f * density
             val radius = (Math.min(width, height) / 2f) - padding
 
+            // Draw outer shockwave pulse when active fire is executing
+            if (isPressedVisual) {
+                canvas.drawCircle(cx, cy, radius * 1.15f, shockwavePaint)
+            }
+
             when (config.shape) {
                 FireButtonShape.CIRCLE -> {
                     canvas.drawCircle(cx, cy, radius, glowPaint)
                     canvas.drawCircle(cx, cy, radius, fillPaint)
                     canvas.drawCircle(cx, cy, radius, strokePaint)
-                    canvas.drawCircle(cx, cy, radius * 0.76f, glowPaint)
+                    canvas.drawCircle(cx, cy, radius * 0.74f, glowPaint)
                 }
                 FireButtonShape.ROUNDED_SQUARE -> {
                     val rect = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
@@ -1242,14 +1321,28 @@ class MacricOverlayService : Service() {
                 canvas.drawCircle(cx, cy, radius + 3.5f * density, editHaloPaint)
             }
 
-            // Draw label & mode text
+            // Draw label & mode text with dynamic color feedback
             val labelSize = (radius * 0.36f).coerceIn(16f, 40f)
             textPaint.textSize = labelSize
+            textPaint.color = if (isPressedVisual) Color.parseColor("#FFFF00") else Color.WHITE
+
             val subTextSize = (radius * 0.22f).coerceIn(11f, 22f)
             subTextPaint.textSize = subTextSize
+            subTextPaint.color = if (isPressedVisual) Color.WHITE else Color.parseColor("#E0E0E0")
 
-            val labelText = if (!isLocked) "DRAG" else config.label
-            val subText = if (!isLocked) "Adjust" else when (aimMode) {
+            val labelText = if (isPressedVisual) {
+                "🔥 FIRE!"
+            } else if (!isLocked) {
+                "DRAG"
+            } else {
+                config.label
+            }
+
+            val subText = if (isPressedVisual) {
+                "⚡ DRAGGING"
+            } else if (!isLocked) {
+                "Adjust"
+            } else when (aimMode) {
                 AimSmoothMode.HEADSHOT_DRAG -> "👑 J-DRAG"
                 AimSmoothMode.SMOOTH_S_CURVE -> "🌊 S-CURVE"
                 AimSmoothMode.SNIPER_SNAP -> "🎯 SNIPER"

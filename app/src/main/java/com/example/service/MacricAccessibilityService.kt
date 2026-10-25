@@ -244,13 +244,13 @@ class MacricAccessibilityService : AccessibilityService() {
         if (!repo.isEmulatorMouseLockEnabled()) return super.onKeyEvent(event)
 
         val triggerKey = repo.getEmulatorTriggerKey()
-        val isTargetKey = isEventMatchingKey(event.keyCode, triggerKey)
+        val isTargetKey = isEventMatchingKey(event.keyCode, triggerKey) || isGeneralFireKey(event.keyCode)
 
         if (isTargetKey) {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
                     if (event.repeatCount == 0) {
-                        Log.d(TAG, "Trigger key [${triggerKey}] pressed! Executing MACRIC auto-headshot fire.")
+                        Log.d(TAG, "Fire key [${event.keyCode} / ${triggerKey}] pressed! Executing MACRIC auto-headshot fire.")
                         MacricOverlayService.triggerActiveFire()
                     }
                     return true
@@ -263,6 +263,17 @@ class MacricAccessibilityService : AccessibilityService() {
         }
 
         return super.onKeyEvent(event)
+    }
+
+    private fun isGeneralFireKey(keyCode: Int): Boolean {
+        return keyCode == KeyEvent.KEYCODE_BUTTON_L1 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_R1 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_A ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_1 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_THUMBL ||
+                keyCode == KeyEvent.KEYCODE_SPACE ||
+                keyCode == KeyEvent.KEYCODE_ENTER ||
+                keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
     }
 
     private fun isEventMatchingKey(keyCode: Int, keyName: String): Boolean {
