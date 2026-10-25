@@ -38,6 +38,8 @@ class MacricOverlayService : Service() {
     private val fireButtonViews: MutableList<FireButtonCanvasView> = mutableListOf()
     private var hudControlBarView: View? = null
     private var isControlBarAttached = false
+    private var touchVisualizerView: TouchVisualizerCanvasView? = null
+    private var isTouchVisualizerAttached = false
 
     // HUD State
     private var isHudLocked: Boolean = true
@@ -76,6 +78,10 @@ class MacricOverlayService : Service() {
 
         fun executeTestFireNow() {
             activeInstance?.executeTestFire()
+        }
+
+        fun triggerTouchRipple(x: Float, y: Float) {
+            activeInstance?.showTouchRipple(x, y)
         }
     }
 
@@ -213,8 +219,70 @@ class MacricOverlayService : Service() {
         // 2. Attach Fire Buttons Overlays
         attachFireButtonOverlays(profile)
 
-        // 3. Attach Floating Mini HUD Control Bar (Lock, Aim mode, Acc status)
+        // 3. Attach Touch Visualizer Overlay (Subtle Ripple Feedback on Left Click)
+        attachTouchVisualizerOverlay()
+
+        // 4. Attach Floating Mini HUD Control Bar (Lock, Aim mode, Acc status)
         attachFloatingControlBar()
+    }
+
+    private fun attachTouchVisualizerOverlay() {
+        if (isTouchVisualizerAttached && touchVisualizerView != null) return
+        val wm = windowManager ?: return
+
+        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            layoutType,
+            flags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
+        }
+
+        val view = TouchVisualizerCanvasView(this)
+        touchVisualizerView = view
+
+        try {
+            wm.addView(view, params)
+            isTouchVisualizerAttached = true
+            Log.d(TAG, "TouchVisualizerCanvasView attached successfully.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not attach TouchVisualizerCanvasView", e)
+        }
+    }
+
+    private fun removeTouchVisualizerOverlay() {
+        if (isTouchVisualizerAttached && touchVisualizerView != null) {
+            try {
+                windowManager?.removeView(touchVisualizerView)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            touchVisualizerView = null
+            isTouchVisualizerAttached = false
+        }
+    }
+
+    fun showTouchRipple(x: Float, y: Float) {
+        if (!ProfileRepository(this).isTouchVisualizerEnabled()) return
+        mainHandler.post {
+            touchVisualizerView?.spawnRipple(x, y)
+        }
     }
 
     private fun attachCrosshairOverlay(profile: GameProfile?) {
@@ -468,6 +536,7 @@ class MacricOverlayService : Service() {
 
         // Subtle, elegant tactical pulse (decent & clean)
         targetView?.flashPressedVisual(durationMs.coerceAtLeast(180L))
+        showTouchRipple(finalX, finalY)
 
         // CRITICAL FOR ACCESSIBILITY INJECTION:
         // Temporarily make the fire overlay non-touchable during gesture dispatch so Android delivers
@@ -525,6 +594,7 @@ class MacricOverlayService : Service() {
             ?: fireButtonViews.firstOrNull() ?: return
         vibratePulse()
         target.flashPressedVisual(250L)
+        showTouchRipple(target.currentCenterX, target.currentCenterY)
         if (!MacricAccessibilityService.isRunning) {
             mainHandler.post {
                 Toast.makeText(
@@ -558,6 +628,7 @@ class MacricOverlayService : Service() {
             return
         }
         target.flashPressedVisual(300L)
+        showTouchRipple(target.currentCenterX, target.currentCenterY)
         if (!MacricAccessibilityService.isRunning) {
             Toast.makeText(this, "⚠️ Accessibility is OFF! Turn ON MACRIC in Settings to test tap.", Toast.LENGTH_LONG).show()
             try {
@@ -1024,6 +1095,7 @@ class MacricOverlayService : Service() {
             crosshairView = null
             isCrosshairAttached = false
         }
+        removeTouchVisualizerOverlay()
         removeFireButtonOverlays()
         removeControlBar()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -1035,6 +1107,97 @@ class MacricOverlayService : Service() {
         }
         stopForegroundOverlay()
         super.onDestroy()
+    }
+
+    /**
+     * Touch Visualizer Overlay View:
+     * Full-screen transparent canvas that renders subtle, elegant ripple waves on Left-Clicks
+     * or gesture firing, providing immediate visual confirmation that input has been registered.
+     */
+    class TouchVisualizerCanvasView(context: Context) : View(context) {
+        data class RippleItem(
+            val x: Float,
+            val y: Float,
+            val startTime: Long,
+            val durationMs: Long = 300L,
+            val maxRadiusPx: Float
+        )
+
+        private val ripples = mutableListOf<RippleItem>()
+        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val auraPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
+
+        fun spawnRipple(x: Float, y: Float) {
+            val density = resources.displayMetrics.density
+            ripples.add(
+                RippleItem(
+                    x = x,
+                    y = y,
+                    startTime = System.currentTimeMillis(),
+                    durationMs = 300L,
+                    maxRadiusPx = 38f * density
+                )
+            )
+            postInvalidateOnAnimation()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (ripples.isEmpty()) return
+
+            val now = System.currentTimeMillis()
+            val iterator = ripples.iterator()
+            val density = resources.displayMetrics.density
+
+            while (iterator.hasNext()) {
+                val r = iterator.next()
+                val elapsed = now - r.startTime
+                val progress = (elapsed.toFloat() / r.durationMs).coerceIn(0f, 1f)
+
+                if (progress >= 1f) {
+                    iterator.remove()
+                    continue
+                }
+
+                // Smooth cubic ease-out: rapid initial expansion, smooth graceful dissipation
+                val easeProgress = 1f - Math.pow((1f - progress).toDouble(), 3.0).toFloat()
+                val currentRadius = (8f * density) + (r.maxRadiusPx - (8f * density)) * easeProgress
+                val alpha = ((1f - progress) * 220).toInt().coerceIn(0, 255)
+
+                // 1. Subtle core impact dot
+                if (progress < 0.35f) {
+                    val dotAlpha = ((1f - (progress / 0.35f)) * 240).toInt().coerceIn(0, 255)
+                    dotPaint.color = Color.parseColor("#00E5FF")
+                    dotPaint.alpha = dotAlpha
+                    canvas.drawCircle(r.x, r.y, 3f * density, dotPaint)
+                }
+
+                // 2. Primary crisp cyan ripple ring
+                ringPaint.color = Color.parseColor("#00E5FF")
+                ringPaint.alpha = alpha
+                ringPaint.strokeWidth = 2f * density
+                canvas.drawCircle(r.x, r.y, currentRadius, ringPaint)
+
+                // 3. Subtle soft violet aura ring
+                auraPaint.color = Color.parseColor("#9312FF")
+                auraPaint.alpha = (alpha * 0.45f).toInt()
+                auraPaint.strokeWidth = 4f * density
+                canvas.drawCircle(r.x, r.y, currentRadius * 0.92f, auraPaint)
+            }
+
+            if (ripples.isNotEmpty()) {
+                postInvalidateOnAnimation()
+            }
+        }
     }
 
     // Custom view that renders the crosshair based on CrosshairConfig
@@ -1198,7 +1361,13 @@ class MacricOverlayService : Service() {
                     (event.actionButton == MotionEvent.BUTTON_PRIMARY)
 
             if (isPrimaryClicked || event.action == MotionEvent.ACTION_BUTTON_PRESS) {
-                flashPressedVisual(260L)
+                flashPressedVisual(200L)
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                val clickX = loc[0] + event.x
+                val clickY = loc[1] + event.y
+                (context as? MacricOverlayService)?.showTouchRipple(clickX, clickY)
+                    ?: triggerTouchRipple(clickX, clickY)
                 onFireAction(true, this)
                 return true
             } else if (event.action == MotionEvent.ACTION_BUTTON_RELEASE) {
@@ -1210,7 +1379,13 @@ class MacricOverlayService : Service() {
 
         override fun onHoverEvent(event: MotionEvent): Boolean {
             if (event.buttonState and MotionEvent.BUTTON_PRIMARY != 0) {
-                flashPressedVisual(260L)
+                flashPressedVisual(200L)
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                val clickX = loc[0] + event.x
+                val clickY = loc[1] + event.y
+                (context as? MacricOverlayService)?.showTouchRipple(clickX, clickY)
+                    ?: triggerTouchRipple(clickX, clickY)
                 onFireAction(true, this)
                 return true
             }
@@ -1227,6 +1402,13 @@ class MacricOverlayService : Service() {
                 when (action) {
                     MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                         flashPressedVisual(200L)
+                        val loc = IntArray(2)
+                        getLocationOnScreen(loc)
+                        val pointerIndex = event.actionIndex.coerceIn(0, (event.pointerCount - 1).coerceAtLeast(0))
+                        val clickX = loc[0] + event.getX(pointerIndex)
+                        val clickY = loc[1] + event.getY(pointerIndex)
+                        (context as? MacricOverlayService)?.showTouchRipple(clickX, clickY)
+                            ?: triggerTouchRipple(clickX, clickY)
                         onFireAction(true, this)
                         return true
                     }

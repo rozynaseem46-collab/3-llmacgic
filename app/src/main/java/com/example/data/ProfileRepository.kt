@@ -24,6 +24,7 @@ class ProfileRepository(private val context: Context) {
         private const val KEY_HUD_LOCKED = "hud_locked_combat"
         private const val KEY_EMULATOR_MOUSE_LOCK_ENABLED = "emulator_mouse_lock_enabled"
         private const val KEY_EMULATOR_TRIGGER_KEY = "emulator_trigger_key"
+        private const val KEY_TOUCH_VISUALIZER_ENABLED = "touch_visualizer_enabled"
     }
 
     fun isHudLocked(): Boolean = prefs.getBoolean(KEY_HUD_LOCKED, true)
@@ -42,6 +43,12 @@ class ProfileRepository(private val context: Context) {
 
     fun setEmulatorTriggerKey(key: String) {
         prefs.edit().putString(KEY_EMULATOR_TRIGGER_KEY, key).apply()
+    }
+
+    fun isTouchVisualizerEnabled(): Boolean = prefs.getBoolean(KEY_TOUCH_VISUALIZER_ENABLED, true)
+
+    fun setTouchVisualizerEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TOUCH_VISUALIZER_ENABLED, enabled).apply()
     }
 
     data class KnownPreset(

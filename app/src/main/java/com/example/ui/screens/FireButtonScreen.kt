@@ -63,6 +63,7 @@ fun FireButtonScreen(
     var showBlueStacksGuideDialog by remember { mutableStateOf(false) }
     var emulatorTriggerKey by remember { mutableStateOf(repo.getEmulatorTriggerKey()) }
     var mouseLockEnabled by remember { mutableStateOf(repo.isEmulatorMouseLockEnabled()) }
+    var touchVisualizerEnabled by remember { mutableStateOf(repo.isTouchVisualizerEnabled()) }
 
     val activeSelected = fireButtons.find { it.id == selectedButtonId } ?: fireButtons.firstOrNull()
     val isAccessibilityActive = MacricAccessibilityService.isRunning
@@ -394,6 +395,58 @@ fun FireButtonScreen(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Touch Visualizer (Click Ripple Feedback) Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MacricCyan.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+            colors = CardDefaults.cardColors(containerColor = MacricDarkCard),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Text(text = "✨", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Touch Visualizer (Click Ripple)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MacricCyan
+                        )
+                        Text(
+                            text = "Displays a subtle ripple effect at the point of Left-Click, providing immediate feedback that input is registered.",
+                            fontSize = 10.sp,
+                            color = MacricTextMuted,
+                            lineHeight = 13.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Switch(
+                    checked = touchVisualizerEnabled,
+                    onCheckedChange = {
+                        touchVisualizerEnabled = it
+                        repo.setTouchVisualizerEnabled(it)
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MacricCyan,
+                        checkedTrackColor = MacricCyan.copy(alpha = 0.3f)
+                    )
+                )
             }
         }
 
