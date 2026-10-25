@@ -25,6 +25,26 @@ class MacricAccessibilityService : AccessibilityService() {
         fun getInstance(): MacricAccessibilityService? = activeInstance
 
         fun isAccessibilityServiceEnabled(context: Context): Boolean {
+            if (isRunning) return true
+            try {
+                val expectedComponentName = "${context.packageName}/${MacricAccessibilityService::class.java.canonicalName}"
+                val enabledServicesSetting = android.provider.Settings.Secure.getString(
+                    context.contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: return false
+                val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
+                colonSplitter.setString(enabledServicesSetting)
+                while (colonSplitter.hasNext()) {
+                    val componentNameString = colonSplitter.next()
+                    if (componentNameString.equals(expectedComponentName, ignoreCase = true) ||
+                        componentNameString.contains(MacricAccessibilityService::class.java.simpleName)
+                    ) {
+                        return true
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error checking accessibility setting", e)
+            }
             return isRunning
         }
 
@@ -197,6 +217,18 @@ class MacricAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
+        try {
+            val info = serviceInfo ?: android.accessibilityservice.AccessibilityServiceInfo()
+            info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+            info.feedbackType = android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_GENERIC
+            info.flags = info.flags or
+                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
+                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            info.notificationTimeout = 50
+            serviceInfo = info
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set dynamic serviceInfo flags", e)
+        }
         Log.i(TAG, "MacricAccessibilityService connected and ready for touch/drag gestures & key filtering.")
     }
 
@@ -234,7 +266,8 @@ class MacricAccessibilityService : AccessibilityService() {
     }
 
     private fun isEventMatchingKey(keyCode: Int, keyName: String): Boolean {
-        return when (keyName.trim().lowercase()) {
+        val normalized = keyName.trim().lowercase()
+        return when (normalized) {
             "space", "spacebar" -> keyCode == KeyEvent.KEYCODE_SPACE
             "f" -> keyCode == KeyEvent.KEYCODE_F
             "e" -> keyCode == KeyEvent.KEYCODE_E
@@ -242,19 +275,32 @@ class MacricAccessibilityService : AccessibilityService() {
             "c" -> keyCode == KeyEvent.KEYCODE_C
             "z" -> keyCode == KeyEvent.KEYCODE_Z
             "r" -> keyCode == KeyEvent.KEYCODE_R
+            "q" -> keyCode == KeyEvent.KEYCODE_Q
+            "t" -> keyCode == KeyEvent.KEYCODE_T
+            "g" -> keyCode == KeyEvent.KEYCODE_G
+            "x" -> keyCode == KeyEvent.KEYCODE_X
+            "b" -> keyCode == KeyEvent.KEYCODE_B
+            "enter", "return" -> keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
             "shift", "left shift" -> keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT
             "ctrl", "control" -> keyCode == KeyEvent.KEYCODE_CTRL_LEFT || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT
             "alt" -> keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT
             "volume up", "vol up" -> keyCode == KeyEvent.KEYCODE_VOLUME_UP
             "volume down", "vol down" -> keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-            "left click", "left mouse", "mouse click" -> {
+            "left click", "left mouse", "mouse click", "mouse 1", "lmb" -> {
                 // KeyCodes passed by BlueStacks / Gamepad for fire / primary button
                 keyCode == KeyEvent.KEYCODE_BUTTON_L1 ||
                         keyCode == KeyEvent.KEYCODE_BUTTON_R1 ||
                         keyCode == KeyEvent.KEYCODE_BUTTON_A ||
                         keyCode == KeyEvent.KEYCODE_BUTTON_1 ||
                         keyCode == KeyEvent.KEYCODE_BUTTON_2 ||
-                        keyCode == KeyEvent.KEYCODE_SPACE // Default fallback for emulators
+                        keyCode == KeyEvent.KEYCODE_SPACE ||
+                        keyCode == KeyEvent.KEYCODE_ENTER ||
+                        keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+            }
+            "right click", "mouse 2", "rmb" -> {
+                keyCode == KeyEvent.KEYCODE_BUTTON_B ||
+                        keyCode == KeyEvent.KEYCODE_BUTTON_2 ||
+                        keyCode == KeyEvent.KEYCODE_BACK
             }
             else -> false
         }

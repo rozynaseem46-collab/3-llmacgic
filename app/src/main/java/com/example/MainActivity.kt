@@ -73,8 +73,12 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     true
                                 }
+                                val willBeActive = !uiState.isOverlayActive
                                 viewModel.toggleOverlay(canDraw) {
                                     requestOverlayPermission()
+                                }
+                                if (canDraw && willBeActive && !com.example.service.MacricAccessibilityService.isAccessibilityServiceEnabled(this@MainActivity)) {
+                                    viewModel.showToast("Enable 'MACRIC' in Accessibility Settings for real in-game auto-headshot drag!")
                                 }
                             }
                         )

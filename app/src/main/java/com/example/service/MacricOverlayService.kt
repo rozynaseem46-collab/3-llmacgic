@@ -73,6 +73,10 @@ class MacricOverlayService : Service() {
         fun stopHoldingFire() {
             activeInstance?.releaseActiveFire()
         }
+
+        fun executeTestFireNow() {
+            activeInstance?.executeTestFire()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -114,6 +118,29 @@ class MacricOverlayService : Service() {
             }
         }
         return START_STICKY
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG, "Orientation / configuration changed. Re-adjusting HUD overlays.")
+        mainHandler.postDelayed({
+            if (isRunning) {
+                updateOverlayContent()
+            }
+        }, 300L)
+    }
+
+    private fun getRealScreenDimensions(): Pair<Int, Int> {
+        val wm = windowManager ?: return Pair(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            Pair(bounds.width(), bounds.height())
+        } else {
+            val dm = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(dm)
+            Pair(dm.widthPixels, dm.heightPixels)
+        }
     }
 
     private fun createNotificationChannel() {
@@ -272,9 +299,8 @@ class MacricOverlayService : Service() {
         val currentProfile = profile ?: return
         val buttons = currentProfile.fireButtons
 
+        val (screenWidth, screenHeight) = getRealScreenDimensions()
         val metrics = resources.displayMetrics
-        val screenWidth = metrics.widthPixels
-        val screenHeight = metrics.heightPixels
 
         for (btn in buttons) {
             val sizePx = (btn.size * metrics.density).toInt().coerceIn(52, 280)
@@ -369,46 +395,50 @@ class MacricOverlayService : Service() {
             return
         }
 
-        // Tactile vibration feedback
-        vibratePulse()
-
         val isAccRunning = MacricAccessibilityService.isRunning
 
         if (isDown) {
+            vibratePulse()
             if (!isAccRunning) {
                 mainHandler.post {
                     Toast.makeText(
                         this,
-                        "Enable 'MACRIC' in Android Accessibility Settings for real in-game touch fire!",
+                        "⚠️ Accessibility is OFF! Turn ON 'MACRIC' in Accessibility Settings or switch to Direct Pass.",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
-            } else {
+            } else if (btn.mode == FireMode.HOLD) {
+                // HOLD mode: Trigger initial stroke and repeat
                 executeShotGesture(btn, centerX, centerY, targetView)
-
-                if (btn.mode == FireMode.HOLD) {
-                    isHoldingFire = true
-                    holdFireRunnable = object : Runnable {
-                        override fun run() {
-                            if (isHoldingFire) {
-                                executeShotGesture(btn, centerX, centerY, targetView)
-                                mainHandler.postDelayed(this, 110L)
-                            }
+                isHoldingFire = true
+                holdFireRunnable = object : Runnable {
+                    override fun run() {
+                        if (isHoldingFire) {
+                            executeShotGesture(btn, centerX, centerY, targetView)
+                            mainHandler.postDelayed(this, 110L)
                         }
                     }
-                    mainHandler.postDelayed(holdFireRunnable!!, 110L)
                 }
+                mainHandler.postDelayed(holdFireRunnable!!, 110L)
             }
         } else {
-            isHoldingFire = false
-            holdFireRunnable?.let { mainHandler.removeCallbacks(it) }
+            // ACTION_UP:
+            if (isHoldingFire) {
+                isHoldingFire = false
+                holdFireRunnable?.let { mainHandler.removeCallbacks(it) }
+            } else if (btn.mode == FireMode.TAP && isAccRunning) {
+                // TAP mode: Execute on finger release!
+                // Critical Android fix: The physical finger has cleared the screen,
+                // so dispatchGesture executes with ZERO pointer collision!
+                executeShotGesture(btn, centerX, centerY, targetView)
+            }
         }
     }
 
     /**
      * Dispatches synthetic headshot drag directly into Free Fire / games.
-     * Note: If targetView is provided, we set FLAG_NOT_TOUCHABLE temporarily during gesture
-     * so the synthetic stroke passes clean through to the underlying game window!
+     * Note: If targetView is provided, we use real on-screen display coordinates and
+     * set temporary pass-through so the synthetic gesture sweeps clean!
      */
     private fun executeShotGesture(
         btn: FireButtonConfig,
@@ -420,6 +450,25 @@ class MacricOverlayService : Service() {
         val dragDistancePx = (btn.dragDistance * resources.displayMetrics.density).coerceIn(30f, 300f)
         val durationMs = btn.dragDurationMs
         val jDirection = btn.jCurveDirection
+
+        val loc = IntArray(2)
+        targetView?.getLocationOnScreen(loc)
+        val (screenWidth, screenHeight) = getRealScreenDimensions()
+
+        val rawX = if (loc[0] > 0 || loc[1] > 0) {
+            loc[0] + (targetView?.width ?: 0) / 2f
+        } else {
+            centerX
+        }
+
+        val rawY = if (loc[0] > 0 || loc[1] > 0) {
+            loc[1] + (targetView?.height ?: 0) / 2f
+        } else {
+            centerY
+        }
+
+        val finalX = rawX.coerceIn(15f, (screenWidth - 15).toFloat())
+        val finalY = rawY.coerceIn(15f, (screenHeight - 15).toFloat())
 
         // Temporary Pass-Through: make overlay non-touchable during gesture injection so it doesn't collide
         targetView?.let { v ->
@@ -435,13 +484,13 @@ class MacricOverlayService : Service() {
         }
 
         MacricAccessibilityService.dispatchUltraSmoothHeadshotDrag(
-            startX = centerX,
-            startY = centerY,
+            startX = finalX,
+            startY = finalY,
             dragUpPx = dragDistancePx,
             durationMs = durationMs,
             aimMode = mode,
             jCurveDirection = jDirection,
-            onFinished = {
+            onFinished = { success ->
                 // Restore touchability after gesture stroke has been swept
                 targetView?.let { v ->
                     mainHandler.post {
@@ -466,13 +515,18 @@ class MacricOverlayService : Service() {
     private fun fireActiveWeapon() {
         val target = fireButtonViews.find { it.config.id == "right_fire" }
             ?: fireButtonViews.firstOrNull() ?: return
-        handleFireAction(
-            target.config,
-            target.currentCenterX,
-            target.currentCenterY,
-            isDown = true,
-            targetView = target
-        )
+        vibratePulse()
+        if (!MacricAccessibilityService.isRunning) {
+            mainHandler.post {
+                Toast.makeText(
+                    this,
+                    "⚠️ MACRIC Accessibility is OFF! Turn it ON in Settings to enable mouse-lock firing.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return
+        }
+        executeShotGesture(target.config, target.currentCenterX, target.currentCenterY, target)
     }
 
     private fun releaseActiveFire() {
@@ -485,6 +539,30 @@ class MacricOverlayService : Service() {
             isDown = false,
             targetView = target
         )
+    }
+
+    fun executeTestFire() {
+        val target = fireButtonViews.find { it.config.id == "right_fire" }
+            ?: fireButtonViews.firstOrNull()
+        if (target == null) {
+            Toast.makeText(this, "No fire button found to test!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!MacricAccessibilityService.isRunning) {
+            Toast.makeText(this, "⚠️ Accessibility is OFF! Turn ON MACRIC in Settings to test tap.", Toast.LENGTH_LONG).show()
+            try {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            return
+        }
+        vibratePulse()
+        executeShotGesture(target.config, target.currentCenterX, target.currentCenterY, target)
+        Toast.makeText(this, "🔥 TEST SHOT: Tap & ${activeAimSmoothMode.displayName} fired!", Toast.LENGTH_SHORT).show()
     }
 
     private fun vibratePulse() {
@@ -619,6 +697,29 @@ class MacricOverlayService : Service() {
             updateFireButtonsVisual()
         }
         contentContainer.addView(aimModeChip)
+
+        // Spacer
+        contentContainer.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams((6 * density).toInt(), 1)
+        })
+
+        // Live Test Fire Tap Button
+        val testShotBtn = TextView(this).apply {
+            text = "🎯 TEST"
+            textSize = 10f
+            setTextColor(Color.parseColor("#FFD600"))
+            setTypeface(null, Typeface.BOLD)
+            setPadding((6 * density).toInt(), (4 * density).toInt(), (6 * density).toInt(), (4 * density).toInt())
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#22FFD600"))
+                cornerRadius = 10f * density
+                setStroke((1 * density).toInt(), Color.parseColor("#FFD600"))
+            }
+        }
+        testShotBtn.setOnClickListener {
+            executeTestFire()
+        }
+        contentContainer.addView(testShotBtn)
 
         // Spacer
         contentContainer.addView(View(this).apply {

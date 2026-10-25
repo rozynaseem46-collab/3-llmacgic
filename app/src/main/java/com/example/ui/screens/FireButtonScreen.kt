@@ -271,16 +271,32 @@ fun FireButtonScreen(
                     }
                 }
 
-                if (!isAccessibilityActive) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = onRequestAccessibilitySettings,
-                        colors = ButtonDefaults.buttonColors(containerColor = MacricOrange),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.testTag("enable_accessibility_btn")
-                    ) {
-                        Text("Enable", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isAccessibilityActive) {
+                        Button(
+                            onClick = {
+                                MacricOverlayService.executeTestFireNow()
+                                android.widget.Toast.makeText(context, "🔥 Testing Headshot Drag Tap! Check screen/overlay.", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MacricViolet),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("test_live_fire_tap_btn")
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Test Tap", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    } else {
+                        Button(
+                            onClick = onRequestAccessibilitySettings,
+                            colors = ButtonDefaults.buttonColors(containerColor = MacricOrange),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("enable_accessibility_btn")
+                        ) {
+                            Text("Enable", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        }
                     }
                 }
             }
